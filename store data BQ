@@ -1,0 +1,113 @@
+CREATE TABLE `your_project.your_dataset.error_logs` (
+    error_message STRING,
+    file_name STRING,
+    bucket STRING,
+    error_time TIMESTAMP,
+    function_name STRING,
+    status STRING
+);
+
+import json
+import base64
+import os
+import logging
+from google.cloud import storage, bigquery
+from datetime import datetime
+
+BATCH_SIZE = 50
+files_in_batch = []
+
+def process_files(event, context):
+    global files_in_batch
+
+    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    file_info = json.loads(pubsub_message)
+
+    try:
+        # Extract bucket name and file name
+        bucket_name = file_info['bucket']
+        file_name = file_info['name']
+        
+        # Add the file to the batch
+        files_in_batch.append((bucket_name, file_name))
+
+        # Process when batch size is met
+        if len(files_in_batch) >= BATCH_SIZE:
+            process_batch()
+
+    except Exception as e:
+        # Log the error to BigQuery
+        log_error_to_bigquery(e, bucket_name, file_name, 'process_files')
+
+def process_batch():
+    global files_in_batch
+
+    storage_client = storage.Client()
+    bigquery_client = bigquery.Client()
+
+    for bucket_name, file_name in files_in_batch:
+        try:
+            source_bucket = storage_client.bucket(bucket_name)
+            destination_bucket = storage_client.bucket('destination-bucket-name')
+            
+            # Move the file
+            blob = source_bucket.blob(file_name)
+            new_blob = source_bucket.copy_blob(blob, destination_bucket)
+            
+            # Log metadata to BigQuery (success)
+            log_to_bigquery(bigquery_client, bucket_name, file_name, new_blob.size, "success")
+        
+        except Exception as e:
+            # Log the error to BigQuery
+            log_error_to_bigquery(e, bucket_name, file_name, 'process_batch')
+
+    # Reset batch
+    files_in_batch = []
+
+def log_to_bigquery(client, bucket, file_name, file_size, status):
+    table_id = "your-project.your_dataset.file_metadata"
+    
+    rows_to_insert = [
+        {
+            "bucket": bucket, 
+            "file_name": file_name, 
+            "file_size": file_size, 
+            "processing_time": datetime.utcnow(), 
+            "status": status
+        }
+    ]
+    
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors != []:
+        # Log the insertion error
+        logging.error(f"Error inserting metadata into BigQuery: {errors}")
+
+def log_error_to_bigquery(error, bucket, file_name, function_name):
+    bigquery_client = bigquery.Client()
+    
+    table_id = "your-project.your_dataset.error_logs"
+    error_message = str(error)
+
+    rows_to_insert = [
+        {
+            "error_message": error_message,
+            "bucket": bucket,
+            "file_name": file_name,
+            "error_time": datetime.utcnow(),
+            "function_name": function_name,
+            "status": "failed"
+        }
+    ]
+    
+    # Insert error log into BigQuery
+    errors = bigquery_client.insert_rows_json(table_id, rows_to_insert)
+    if errors != []:
+        logging.error(f"Error logging error to BigQuery: {errors}")
+
+
+SELECT *
+FROM `your_project.your_dataset.error_logs`
+ORDER BY error_time DESC
+LIMIT 100;
+
+
