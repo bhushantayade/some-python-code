@@ -1,0 +1,131 @@
+import json
+import base64
+import logging
+from google.cloud import storage, bigquery
+from datetime import datetime
+import fastavro
+
+BATCH_SIZE = 50
+files_in_batch = []
+
+def process_files(event, context):
+    global files_in_batch
+
+    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    file_info = json.loads(pubsub_message)
+
+    try:
+        # Add the file to the batch
+        files_in_batch.append(file_info)
+
+        # Process the batch when the batch size is met
+        if len(files_in_batch) >= BATCH_SIZE:
+            process_batch()
+        
+        # Acknowledge the message after processing the batch
+        context.ack()
+
+    except Exception as e:
+        # Log the error to BigQuery
+        log_error_to_bigquery(e, file_info['bucket'], file_info['name'], 'process_files')
+        # Send failure notification
+        send_failure_notification(file_info['bucket'], file_info['name'], str(e))
+        
+        # Acknowledge the message even in case of an error to prevent re-delivery
+        context.ack()
+
+def process_batch():
+    global files_in_batch
+
+    storage_client = storage.Client()
+    bigquery_client = bigquery.Client()
+
+    for file_info in files_in_batch:
+        bucket_name = file_info['bucket']
+        file_name = file_info['name']
+        try:
+            source_bucket = storage_client.bucket(bucket_name)
+            destination_bucket = storage_client.bucket('destination-bucket-name')
+            
+            # Download the file content
+            blob = source_bucket.blob(file_name)
+            blob_data = blob.download_as_bytes()
+
+            # Validate Avro schema
+            validate_avro_schema(blob_data)
+            
+            # Copy the file to the destination bucket
+            new_blob = destination_bucket.blob(file_name)
+            destination_bucket.copy_blob(blob, destination_bucket, file_name)
+            
+            # Delete the file from the source bucket
+            blob.delete()
+
+            # Log metadata to BigQuery (success)
+            log_to_bigquery(bigquery_client, bucket_name, file_name, new_blob.size, "success")
+        
+        except Exception as e:
+            # Log the error to BigQuery
+            log_error_to_bigquery(e, bucket_name, file_name, 'process_batch')
+            # Send failure notification
+            send_failure_notification(bucket_name, file_name, str(e))
+
+    # Send batch completion notification
+    send_batch_completion_notification(files_in_batch)
+    
+    # Reset batch
+    files_in_batch = []
+
+def validate_avro_schema(file_data):
+    try:
+        with fastavro.reader(file_data) as reader:
+            schema = reader.schema
+            # Validate against expected schema (optional implementation)
+    except Exception as e:
+        raise ValueError(f"Avro schema validation failed: {str(e)}")
+
+def log_to_bigquery(client, bucket, file_name, file_size, status):
+    table_id = "your-project.your_dataset.file_metadata"
+    
+    rows_to_insert = [
+        {
+            "bucket": bucket, 
+            "file_name": file_name, 
+            "file_size": file_size, 
+            "processing_time": datetime.utcnow(), 
+            "status": status
+        }
+    ]
+    
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors != []:
+        logging.error(f"Error inserting metadata into BigQuery: {errors}")
+
+def log_error_to_bigquery(error, bucket, file_name, function_name):
+    bigquery_client = bigquery.Client()
+    
+    table_id = "your-project.your_dataset.error_logs"
+    error_message = str(error)
+
+    rows_to_insert = [
+        {
+            "error_message": error_message,
+            "bucket": bucket,
+            "file_name": file_name,
+            "error_time": datetime.utcnow(),
+            "function_name": function_name,
+            "status": "failed"
+        }
+    ]
+    
+    errors = bigquery_client.insert_rows_json(table_id, rows_to_insert)
+    if errors != []:
+        logging.error(f"Error logging error to BigQuery: {errors}")
+
+def send_failure_notification(bucket, file_name, error_message):
+    logging.error(f"Failure notification: File {file_name} in bucket {bucket} failed with error: {error_message}")
+    # Log-based alert is set to monitor this log and send email
+
+def send_batch_completion_notification(batch_files):
+    logging.info(f"Batch completion notification: Successfully processed batch of {len(batch_files)} files.")
+    # Log-based alert is set to monitor this log and send email
