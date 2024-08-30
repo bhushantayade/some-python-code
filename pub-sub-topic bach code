@@ -1,0 +1,126 @@
+Step 1: File Upload Notification to Pub/Sub
+Ensure your Cloud Storage bucket is configured to send notifications to the Pub/Sub topic.
+
+Step 2: Cloud Function to Collect Messages
+This Cloud Function will receive file notifications, accumulate them into batches, and trigger batch processing.
+
+python
+Copy code
+import os
+import json
+import time
+from google.cloud import pubsub_v1
+from google.cloud import firestore
+
+# Configuration
+BATCH_SIZE = 50
+BATCH_TIMEOUT = 60  # seconds
+PROJECT_ID = os.getenv('GCP_PROJECT')
+COLLECTION_NAME = 'file_batches'
+
+# Initialize Firestore
+db = firestore.Client()
+
+# Initialize Pub/Sub
+publisher = pubsub_v1.PublisherClient()
+batch_topic = 'projects/{project_id}/topics/{topic_name}'.format(
+    project_id=PROJECT_ID,
+    topic_name='batch-processing-topic'
+)
+
+def process_batch(batch):
+    # Implement your batch processing logic here
+    print("Processing batch:", batch)
+    # For example, store metadata in BigQuery or other actions
+    pass
+
+def accumulate_messages(message):
+    # Store message in Firestore
+    doc_ref = db.collection(COLLECTION_NAME).document(message['id'])
+    doc_ref.set({
+        'metadata': message,
+        'timestamp': time.time()
+    })
+
+def clean_old_batches():
+    # Remove old batch documents from Firestore
+    threshold = time.time() - BATCH_TIMEOUT
+    docs = db.collection(COLLECTION_NAME).where('timestamp', '<', threshold).stream()
+    for doc in docs:
+        doc.reference.delete()
+
+def cloud_function_handler(event, context):
+    message = json.loads(base64.b64decode(event['data']).decode('utf-8'))
+    
+    # Accumulate the message
+    accumulate_messages(message)
+    
+    # Clean up old batches
+    clean_old_batches()
+
+    # Retrieve all accumulated messages
+    docs = db.collection(COLLECTION_NAME).stream()
+    batch = [doc.to_dict() for doc in docs]
+
+    if len(batch) >= BATCH_SIZE:
+        # Trigger batch processing
+        process_batch(batch)
+        
+        # Publish a message to another Pub/Sub topic for batch processing
+        publisher.publish(batch_topic, data=json.dumps(batch).encode('utf-8'))
+        
+        # Clear accumulated messages after processing
+        for doc in docs:
+            doc.reference.delete()
+Step 3: Cloud Function to Process Batches
+This Cloud Function will process the batches of file metadata.
+
+python
+Copy code
+import json
+from google.cloud import bigquery
+
+# Initialize BigQuery
+client = bigquery.Client()
+
+def process_batch(batch):
+    # Implement schema validation and metadata storage logic here
+    print("Processing batch:", batch)
+    
+    # Example: Insert metadata into BigQuery
+    table_id = 'your-project.your_dataset.your_table'
+    rows_to_insert = [{'file_metadata': json.dumps(item)} for item in batch]
+    
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors:
+        print("Errors occurred while inserting rows:", errors)
+    else:
+        print("Batch processed successfully")
+
+def batch_processing_function(event, context):
+    # Decode Pub/Sub message
+    batch = json.loads(base64.b64decode(event['data']).decode('utf-8'))
+    
+    # Process the batch
+    process_batch(batch)
+Additional Steps
+Deploy Cloud Functions: Deploy both functions using the gcloud command:
+
+sh
+Copy code
+gcloud functions deploy cloud_function_handler \
+  --runtime python39 \
+  --trigger-topic your-pubsub-topic \
+  --entry-point cloud_function_handler \
+  --project your-gcp-project
+
+gcloud functions deploy batch_processing_function \
+  --runtime python39 \
+  --trigger-topic batch-processing-topic \
+  --entry-point batch_processing_function \
+  --project your-gcp-project
+Set Up IAM Permissions: Ensure the Cloud Functions have the necessary IAM permissions to access Pub/Sub, Firestore, and BigQuery.
+
+Testing and Monitoring: Test the functions with sample messages and monitor their performance and logs in the Google Cloud Console.
+
+This code is a starting point and may need to be adapted based on your specific requirements and architecture.
