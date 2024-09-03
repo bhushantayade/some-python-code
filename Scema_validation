@@ -1,0 +1,128 @@
+pip install google-cloud-storage fastavro
+
+import fastavro
+from google.cloud import storage
+import io
+
+def validate_avro_schema(avro_file_content, expected_schema):
+    avro_bytes = io.BytesIO(avro_file_content)
+    
+    # Open the Avro file using the schema
+    reader = fastavro.reader(avro_bytes)
+    
+    # Check if the schema in the file matches the expected schema
+    if reader.schema != expected_schema:
+        raise ValueError("AVRO schema does not match the expected schema.")
+    
+    # Validate records according to the schema
+    for record in reader:
+        # You can perform additional record-level validation if needed
+        pass
+
+def process_file(data, context):
+    bucket_name = data['bucket']
+    file_name = data['name']
+    
+    # Initialize the Cloud Storage client
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+    
+    file_content = blob.download_as_bytes()
+    
+    if file_name.endswith('.avro'):
+        # Define the expected AVRO schema
+        expected_schema = {
+            "type": "record",
+            "name": "MySchema",
+            "fields": [
+                {"name": "field1", "type": "string"},
+                {"name": "field2", "type": "int"},
+                {"name": "field3", "type": "boolean"},
+                # Add your schema fields here
+            ]
+        }
+        validate_avro_schema(file_content, expected_schema)
+    
+    elif file_name.endswith('.csv'):
+        expected_headers = ["field1", "field2", "field3"]  # Define your expected CSV headers here
+        validate_csv_schema(file_content, expected_headers)
+    
+    else:
+        raise ValueError(f"Unsupported file type: {file_name}")
+    
+    # If validation passes, move the file to the destination bucket
+    destination_bucket_name = "your-destination-bucket"
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+    new_blob = destination_bucket.blob(file_name)
+    
+    new_blob.upload_from_string(file_content)
+    
+    # Delete the original file from the source bucket
+    blob.delete()
+
+    print(f"File {file_name} moved to {destination_bucket_name} after schema validation.")
+
+def validate_csv_schema(csv_file_content, expected_headers):
+    import csv
+    import io
+
+    csv_text = csv_file_content.decode('utf-8')
+    csv_reader = csv.reader(io.StringIO(csv_text))
+    headers = next(csv_reader)
+    if headers != expected_headers:
+        raise ValueError("CSV schema does not match expected schema.")
+
+
+# We can also use Hashing maintain Unique File id
+import hashlib
+
+def generate_file_id(bucket_name, file_name):
+    combined = f"{bucket_name}_{file_name}"
+    file_id = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+    return file_id
+
+# Insserting data into Tables   
+import json
+import os
+import base64
+from google.cloud import storage, bigquery
+
+def move_file_and_log_metadata(event, context):
+    pubsub_message = json.loads(base64.b64decode(event['data']).decode('utf-8'))
+    bucket_name = pubsub_message['bucket']
+    file_name = pubsub_message['name']
+    
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(bucket_name)
+    source_blob = source_bucket.blob(file_name)
+    
+    destination_bucket_name = 'destination-bucket-name'
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+    
+    # Move the file
+    destination_blob = source_bucket.copy_blob(source_blob, destination_bucket, file_name)
+    source_blob.delete()
+
+    # Generate a unique file_id
+    file_id = f"{bucket_name}_{file_name}"
+    
+    # Extract metadata
+    metadata = {
+        'file_id': file_id,
+        'file_name': file_name,
+        'bucket_name': destination_bucket_name,
+        'size': destination_blob.size,
+        'content_type': destination_blob.content_type,
+        'created': destination_blob.time_created,
+    }
+
+    # Log metadata to BigQuery
+    bigquery_client = bigquery.Client()
+    table_id = 'your-project.your_dataset.your_table'
+    errors = bigquery_client.insert_rows_json(table_id, [metadata])
+
+    if errors:
+        print(f"Encountered errors while inserting rows: {errors}")
+    else:
+        print(f"File {file_name} successfully moved, file_id {file_id} created, and metadata logged.")
