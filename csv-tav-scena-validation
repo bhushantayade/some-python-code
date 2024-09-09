@@ -1,0 +1,255 @@
+schema = [
+    {"name": "name", "type": "str"},
+    {"name": "age", "type": "int"},
+    {"name": "city", "type": "str"}
+]
+import pandas as pd
+
+# Define the schema
+schema = [
+    {"name": "name", "type": "str"},
+    {"name": "age", "type": "int"},
+    {"name": "city", "type": "str"}
+]
+
+def validate_schema(file_path, file_type, schema):
+    # Read the file based on file type (CSV or TSV)
+    if file_type == "csv":
+        df = pd.read_csv(file_path)
+    elif file_type == "tsv":
+        df = pd.read_csv(file_path, sep='\t')
+    else:
+        raise ValueError("Unsupported file type")
+
+    # Validate headers
+    file_columns = df.columns.tolist()
+    schema_columns = [field['name'] for field in schema]
+    
+    if file_columns != schema_columns:
+        return False, "Headers do not match schema"
+
+    # Validate types
+    for field in schema:
+        column_name = field['name']
+        column_type = field['type']
+        
+        if column_type == 'int':
+            if not pd.api.types.is_integer_dtype(df[column_name]):
+                return False, f"Column '{column_name}' does not match type 'int'"
+        elif column_type == 'str':
+            if not pd.api.types.is_string_dtype(df[column_name]):
+                return False, f"Column '{column_name}' does not match type 'str'"
+        else:
+            return False, f"Unsupported type '{column_type}' for column '{column_name}'"
+
+    return True, "Schema is valid"
+
+# Example usage
+file_path = "data.csv"  # or "data.tsv"
+file_type = "csv"  # or "tsv"
+is_valid, message = validate_schema(file_path, file_type, schema)
+print(is_valid, message)
+
+#Using polar library
+
+import polars as pl
+
+# Define the schema
+schema = [
+    {"name": "name", "type": "str"},
+    {"name": "age", "type": "int"},
+    {"name": "city", "type": "str"}
+]
+
+def validate_schema(file_path, file_type, schema):
+    # Read the file based on file type (CSV or TSV)
+    if file_type == "csv":
+        df = pl.read_csv(file_path)
+    elif file_type == "tsv":
+        df = pl.read_csv(file_path, separator="\t")
+    else:
+        raise ValueError("Unsupported file type")
+    
+    # Validate headers
+    file_columns = df.columns
+    schema_columns = [field['name'] for field in schema]
+    
+    if file_columns != schema_columns:
+        return False, "Headers do not match schema"
+    
+    # Validate types
+    for field in schema:
+        column_name = field['name']
+        column_type = field['type']
+        
+        # Check if the column exists
+        if column_name not in df.columns:
+            return False, f"Missing column: {column_name}"
+
+        # Validate the column type
+        col = df[column_name]
+        if column_type == 'int':
+            if not col.dtype == pl.Int64:  # Polars uses Int64 for integer columns by default
+                return False, f"Column '{column_name}' does not match type 'int'"
+        elif column_type == 'str':
+            if not col.dtype == pl.Utf8:  # Polars uses Utf8 for string columns
+                return False, f"Column '{column_name}' does not match type 'str'"
+        else:
+            return False, f"Unsupported type '{column_type}' for column '{column_name}'"
+
+    return True, "Schema is valid"
+
+# Example usage
+file_path = "data.csv"  # or "data.tsv"
+file_type = "csv"  # or "tsv"
+is_valid, message = validate_schema(file_path, file_type, schema)
+print(is_valid, message)
+
+Polars provides a variety of data types (also called dtypes) to handle different kinds of data in DataFrames. Below is a list of common Polars data types and their usage:
+
+1. Numeric Types:
+pl.Int8: 8-bit signed integer
+pl.Int16: 16-bit signed integer
+pl.Int32: 32-bit signed integer
+pl.Int64: 64-bit signed integer (default for integers in Polars)
+pl.UInt8: 8-bit unsigned integer
+pl.UInt16: 16-bit unsigned integer
+pl.UInt32: 32-bit unsigned integer
+pl.UInt64: 64-bit unsigned integer
+pl.Float32: 32-bit floating-point number
+pl.Float64: 64-bit floating-point number (default for floats in Polars)
+2. String Type:
+pl.Utf8: Unicode string data (used for text columns)
+3. Boolean Type:
+pl.Boolean: Boolean values (True or False)
+4. Date and Time Types:
+pl.Date: Date without time (YYYY-MM-DD)
+pl.Datetime: Date and time (with support for time zones)
+Can be represented as pl.Datetime("ms"), pl.Datetime("us"), pl.Datetime("ns") to specify millisecond, microsecond, or nanosecond precision.
+pl.Duration: Represents a time duration (e.g., 5 minutes, 2 days)
+pl.Time: Time without date (HH:MM
+)
+5. Categorical Type:
+pl.Categorical: Used for categorical data (similar to category in Pandas)
+6. Binary Type:
+pl.Binary: Binary data type for raw bytes (used to store non-text data)
+7. List Type:
+pl.List: Used to store a list of values for each row (e.g., a list of integers, strings, etc.)
+8. Null Type:
+pl.Null: Used for null values (i.e., missing or undefined values)
+9. Object Type:
+pl.Object: Generic object type (rarely used in Polars; for special cases where custom Python objects need to be stored)
+
+import polars as pl
+
+# Creating a Polars DataFrame with different types
+data = {
+    "int_column": [1, 2, 3],
+    "float_column": [1.1, 2.2, 3.3],
+    "string_column": ["a", "b", "c"],
+    "bool_column": [True, False, True],
+    "date_column": [pl.date(2020, 1, 1), pl.date(2021, 1, 1), pl.date(2022, 1, 1)]
+}
+
+df = pl.DataFrame(data)
+print(df.dtypes)
+
+Polars does not have a dedicated JSON type like some other libraries or databases. However, it can handle JSON-like data using its pl.List and pl.Struct data types, which allow for hierarchical and nested data structures, similar to JSON. Here's how JSON-like data can be represented and processed in Polars:
+
+1. pl.List:
+This can be used when you have a JSON array that needs to be stored in a column. Each row in the column would be a list (array) of values.
+
+###new format
+To validate a CSV file using the provided schema where the schema only provides the column name and data type (which can be int, string, date, or json), you can achieve this by performing the following steps using Polars:
+
+Steps:
+Load the CSV file: Use polars.read_csv() to load the CSV file.
+Validate headers: Ensure that the CSV file's column names match the provided schema.
+Validate types: For each column, validate whether the data type matches the expected type (int, string, date, or json).
+
+schema = [
+    {"name": "id", "type": "int"},
+    {"name": "name", "type": "string"},
+    {"name": "birth_date", "type": "date"},
+    {"name": "attributes", "type": "json"}
+]
+
+import polars as pl
+import json
+from datetime import datetime
+
+# Sample schema with name and type
+schema = [
+    {"name": "id", "type": "int"},
+    {"name": "name", "type": "string"},
+    {"name": "birth_date", "type": "date"},
+    {"name": "attributes", "type": "json"}
+]
+
+# Function to validate the schema
+def validate_csv_schema(file_path, schema):
+    # Load CSV file
+    df = pl.read_csv(file_path)
+    
+    # Validate headers
+    file_columns = df.columns
+    schema_columns = [field['name'] for field in schema]
+    
+    if file_columns != schema_columns:
+        return False, "Headers do not match schema"
+
+    # Validate types for each column
+    for field in schema:
+        column_name = field['name']
+        expected_type = field['type']
+        
+        # Check if column exists
+        if column_name not in df.columns:
+            return False, f"Missing column: {column_name}"
+        
+        # Get the column data
+        col = df[column_name]
+        
+        # Validate the type based on the schema
+        if not validate_type(col, expected_type):
+            return False, f"Column '{column_name}' does not match type '{expected_type}'"
+    
+    return True, "Schema is valid"
+
+# Function to validate the type of a column
+def validate_type(column, expected_type):
+    if expected_type == "int":
+        return column.dtype == pl.Int64  # Polars uses Int64 for integers by default
+    elif expected_type == "string":
+        return column.dtype == pl.Utf8  # Polars uses Utf8 for strings
+    elif expected_type == "date":
+        # Check if column can be converted to date
+        try:
+            _ = column.str.strptime(pl.Date, fmt="%Y-%m-%d")
+            return True
+        except:
+            return False
+    elif expected_type == "json":
+        # Check if column values are valid JSON
+        try:
+            for val in column:
+                _ = json.loads(val)  # Try to parse the string as JSON
+            return True
+        except:
+            return False
+    return False
+
+# Example usage
+file_path = "data.csv"
+is_valid, message = validate_csv_schema(file_path, schema)
+print(is_valid, message)
+Explanation:
+Reading the CSV: The CSV file is loaded into a Polars DataFrame using pl.read_csv().
+Header Validation: The columns from the CSV are compared with the schema's column names to ensure they match.
+Type Validation:
+Integer (int): Checks if the column's data type is pl.Int64 (Polars' default integer type).
+String (string): Ensures the column is of type pl.Utf8 (Polars' string type).
+Date (date): Attempts to parse the column values as dates using a specific format (e.g., %Y-%m-%d).
+JSON (json): Tries to parse each value in the column as JSON using Python’s json.loads() function. If any value fails to parse, it returns an error.
+
+
