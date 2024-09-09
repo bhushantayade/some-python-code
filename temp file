@@ -1,0 +1,83 @@
+import re
+
+def validate_filename(filename):
+    # Define the pattern
+    pattern = r'^(?P<filename>\w+)_(?P<starttime>\d{8}_\d{6})_(?P<endtime>\d{8}_\d{6})_(?P<bucketname>\w+)\.(?P<extension>\w+)$'
+    
+    # Match the filename with the pattern
+    match = re.match(pattern, filename)
+    
+    if match:
+        # Extract the groups if needed
+        file_details = match.groupdict()
+        return True, file_details
+    else:
+        return False, None
+
+# Test cases
+test_filename = "logfile_20240908_120000_20240908_130000_mybucket.txt"
+is_valid, details = validate_filename(test_filename)
+
+if is_valid:
+    print("Valid file name:", details)
+else:
+    print("Invalid file name")
+
+
+
+
+import csv
+import pandas as pd
+
+def infer_data_type(value):
+    """Infer data type of a value."""
+    try:
+        int(value)
+        return "int"
+    except ValueError:
+        try:
+            float(value)
+            return "float"
+        except ValueError:
+            try:
+                pd.to_datetime(value)
+                return "date"
+            except ValueError:
+                return "str"
+
+def generate_schema_from_csv(csv_file_path):
+    """Generate schema from the CSV file by reading the first row of data."""
+    schema = {}
+    
+    with open(csv_file_path, mode='r') as file:
+        reader = csv.DictReader(file)
+        first_row = next(reader)  # Read the first row of data
+        
+        for column, value in first_row.items():
+            schema[column] = infer_data_type(value)
+    
+    return schema
+
+def validate_schema(generated_schema, existing_schema):
+    """Compare the generated schema with the existing schema."""
+    for column, data_type in existing_schema.items():
+        if column not in generated_schema:
+            print(f"Missing column: {column}")
+        elif generated_schema[column] != data_type:
+            print(f"Mismatch in column '{column}': Expected {data_type}, got {generated_schema[column]}")
+        else:
+            print(f"Column '{column}' matches the expected schema.")
+    
+    for column in generated_schema:
+        if column not in existing_schema:
+            print(f"Unexpected column in CSV: {column}")
+
+# Path to CSV file
+csv_file_path = "sample_data.csv"
+
+# Generate schema from CSV
+generated_schema = generate_schema_from_csv(csv_file_path)
+
+# Validate generated schema with existing schema
+validate_schema(generated_schema, existing_schema)
+
