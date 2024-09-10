@@ -1,5 +1,34 @@
 import re
 
+# Adjusted pattern to allow hyphens in bucket and folder names
+pattern = r'(?P<bucket>[\w\-]+)_(?P<folder>[\w\-]+)_(?P<start_time>\d{8}T\d{4})_(?P<end_time>\d{8}T\d{4})_v(?P<version>\d+)_(?P<file_name>[\w\-]+)\.(?P<extension>\w+)'
+
+file1 = 'gcs-bucket-1_folder-A_20230901T1200_20230901T1300_v1_file1.csv'
+file2 = 'gcs-bucket-2_folder-B_20230901T1200_20230901T1300_v1_file2.json'
+
+# Match the pattern with the filenames
+match1 = re.match(pattern, file1)
+match2 = re.match(pattern, file2)
+
+if match1 and match2:
+    # Extract matched components as dictionaries
+    components1 = match1.groupdict()
+    components2 = match2.groupdict()
+
+    # Compare components (e.g., start and end times)
+    if components1['start_time'] == components2['start_time'] and components1['end_time'] == components2['end_time']:
+        print("The start and end times match!")
+    else:
+        print("The start and end times do not match.")
+else:
+    print("Pattern did not match the file names.")
+
+
+
+
+
+import re
+
 def validate_filename(filename):
     # Define the pattern
     pattern = r'^(?P<filename>\w+)_(?P<starttime>\d{8}_\d{6})_(?P<endtime>\d{8}_\d{6})_(?P<bucketname>\w+)\.(?P<extension>\w+)$'
