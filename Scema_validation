@@ -1,3 +1,58 @@
+import re
+
+def derive_pattern_from_filename(file_name):
+    # Attempt to match a general file name structure
+    pattern = r'(?P<bucket>[\w\-]+)_(?P<folder>[\w\-]+)_(?P<start_time>\d{8}T\d{4})_(?P<end_time>\d{8}T\d{4})_v(?P<version>\d+)_(?P<file_name>[\w\-]+)\.(?P<extension>\w+)'
+    
+    match = re.match(pattern, file_name)
+    
+    if match:
+        components = match.groupdict()
+        derived_pattern = f"{components['bucket']}_{components['folder']}_{components['start_time']}_{components['end_time']}_v{components['version']}_{components['file_name']}.{components['extension']}"
+        print(f"Derived pattern: {derived_pattern}")
+        return components
+    else:
+        print("Could not derive a pattern from the file name.")
+        return None
+
+def match_file_to_derived_pattern(file_name, components):
+    if not components:
+        print("No derived pattern available for comparison.")
+        return
+    
+    # Dynamically construct a regex based on the derived components
+    bucket_pattern = re.escape(components['bucket'])
+    folder_pattern = re.escape(components['folder'])
+    start_time_pattern = re.escape(components['start_time'])
+    end_time_pattern = re.escape(components['end_time'])
+    version_pattern = re.escape(f"v{components['version']}")
+    file_name_pattern = re.escape(components['file_name'])
+    extension_pattern = re.escape(components['extension'])
+    
+    regex_pattern = f"{bucket_pattern}_{folder_pattern}_{start_time_pattern}_{end_time_pattern}_{version_pattern}_{file_name_pattern}\.{extension_pattern}"
+    
+    # Check if the file name matches the derived pattern
+    if re.match(f"^{regex_pattern}$", file_name):
+        print(f"The file '{file_name}' matches the derived pattern.")
+    else:
+        print(f"The file '{file_name}' does NOT match the derived pattern.")
+
+# Example file names
+file1 = "gcs-bucket-1_folder-A_20230901T1200_20230901T1300_v1_file1.csv"
+file2 = "gcs-bucket-2_folder-A_20230901T1200_20230901T1300_v1_file1.csv"
+
+# Derive pattern from file1
+components = derive_pattern_from_filename(file1)
+
+# Check if file2 matches the derived pattern
+match_file_to_derived_pattern(file2, components)
+
+
+
+
+
+
+
 pip install google-cloud-storage fastavro
 
 import fastavro
