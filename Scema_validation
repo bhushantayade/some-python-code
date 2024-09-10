@@ -1,3 +1,17 @@
+from datetime import datetime
+
+# Input string
+date_string = "20230901000000"
+
+# Convert to datetime object
+date_object = datetime.strptime(date_string, "%Y%m%d%H%M%S")
+
+# Format into desired format YYYYMMDDHHMMSS
+formatted_date = date_object.strftime("%Y%m%d%H%M%S")
+
+print(formatted_date)
+
+
 import re
 
 def derive_pattern_from_filename(file_name):
