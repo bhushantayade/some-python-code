@@ -1,0 +1,236 @@
+To log actual status codes from GCS, BigQuery, and Pub/Sub, it's essential to capture the status codes provided by the APIs when performing the operations. Below are examples showing how to log actual status codes for each service.
+
+1. Logging GCS Operations with Actual Status Code
+The GCS API client doesn't directly return status codes, but you can catch exceptions and log appropriate responses based on them.
+
+python
+Copy code
+from google.cloud import storage, logging
+from google.api_core.exceptions import GoogleAPIError
+
+def upload_file_to_gcs(bucket_name, source_file_name, destination_blob_name):
+    # Initialize logging client
+    logging_client = logging.Client()
+    logger = logging_client.logger("gcs-log")
+
+    try:
+        # Initialize a GCS client
+        storage_client = storage.Client()
+
+        # Get the bucket and upload the file
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_filename(source_file_name)
+
+        # If no exception, assume success
+        logger.log_text(f"File {source_file_name} uploaded to {destination_blob_name} in bucket {bucket_name} with status code: 200")
+        return "Upload Success"
+
+    except GoogleAPIError as e:
+        # Capture the actual status code from the exception
+        status_code = e.code if hasattr(e, 'code') else 'Unknown'
+        logger.log_text(f"Failed to upload {source_file_name} with status code: {status_code} - Error: {str(e)}", severity='ERROR')
+        return "Upload Failed"
+
+# Example usage
+upload_file_to_gcs('your-bucket-name', 'local-file-path', 'destination-blob-name')
+2. Logging BigQuery Operations with Actual Status Code
+For BigQuery operations, if there's an error, you can capture the status code from the exception raised by the BigQuery API.
+
+python
+Copy code
+from google.cloud import bigquery, logging
+from google.api_core.exceptions import GoogleAPIError
+
+def insert_rows_to_bigquery(dataset_id, table_id, rows_to_insert):
+    # Initialize logging client
+    logging_client = logging.Client()
+    logger = logging_client.logger("bigquery-log")
+
+    try:
+        # Initialize a BigQuery client
+        client = bigquery.Client()
+
+        # Get the table reference
+        table_ref = client.dataset(dataset_id).table(table_id)
+        table = client.get_table(table_ref)
+
+        # Insert rows
+        errors = client.insert_rows_json(table, rows_to_insert)
+
+        if not errors:
+            logger.log_text(f"Rows inserted successfully into {table_id} with status code: 200")
+            return "Insert Success"
+        else:
+            logger.log_text(f"Failed to insert rows into {table_id} with status code: 400 - Errors: {errors}", severity='ERROR')
+            return "Insert Failed"
+
+    except GoogleAPIError as e:
+        # Capture the actual status code from the exception
+        status_code = e.code if hasattr(e, 'code') else 'Unknown'
+        logger.log_text(f"Error occurred while inserting rows into {table_id} with status code: {status_code} - Error: {str(e)}", severity='ERROR')
+        return "Insert Failed"
+
+# Example usage
+rows_to_insert = [
+    {"name": "John", "age": 25},
+    {"name": "Jane", "age": 30}
+]
+insert_rows_to_bigquery('your-dataset-id', 'your-table-id', rows_to_insert)
+3. Logging Pub/Sub Operations with Actual Status Code
+For Pub/Sub, we can handle status codes via the google.api_core.exceptions module, which catches API errors and provides details.
+
+python
+Copy code
+from google.cloud import pubsub_v1, logging
+from google.api_core.exceptions import GoogleAPIError
+
+def publish_message_to_pubsub(project_id, topic_id, message):
+    # Initialize logging client
+    logging_client = logging.Client()
+    logger = logging_client.logger("pubsub-log")
+
+    try:
+        # Initialize a Pub/Sub client
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(project_id, topic_id)
+
+        # Publish the message
+        future = publisher.publish(topic_path, message.encode('utf-8'))
+        result = future.result()  # Wait for the message to be sent
+        
+        # If successful, Pub/Sub doesn't return a status code directly, but we assume success.
+        logger.log_text(f"Message published to {topic_id} with status code: 200")
+        return "Publish Success"
+
+    except GoogleAPIError as e:
+        # Capture the actual status code from the exception
+        status_code = e.code if hasattr(e, 'code') else 'Unknown'
+        logger.log_text(f"Failed to publish message to {topic_id} with status code: {status_code} - Error: {str(e)}", severity='ERROR')
+        return "Publish Failed"
+
+# Example usage
+publish_message_to_pubsub('your-project-id', 'your-topic-id', 'Hello, World!')
+Explanation:
+GoogleAPIError: This exception class is part of the google.api_core.exceptions module and provides detailed information on API errors, including the actual status code (e.code).
+Status Codes: These are captured from the exceptions raised by GCP services. For successful operations, GCP services generally don't return status codes, so we assume success when no exceptions are raised.
+These examples capture real status codes during operations for GCS, BigQuery, and Pub/Sub.
+
+
+
+
+
+
+You said:
+check for bucket and file name is present or not,  by using separate function for each  and log its all activity
+
+2/2
+
+ChatGPT said:
+ChatGPT
+To check if a bucket or file exists in Google Cloud Storage and log all related activities, you can create separate functions for each action. You will also log the process, including whether the bucket or file exists, and any exceptions encountered.
+
+Here's how you can do this:
+
+1. Checking if a Bucket Exists
+We'll create a function to check if a bucket exists in GCS, log the result, and capture any errors.
+
+python
+Copy code
+from google.cloud import storage, logging
+from google.api_core.exceptions import NotFound, GoogleAPIError
+
+def check_bucket_exists(bucket_name):
+    # Initialize logging client
+    logging_client = logging.Client()
+    logger = logging_client.logger("gcs-bucket-log")
+
+    try:
+        # Initialize GCS client
+        storage_client = storage.Client()
+
+        # Check if bucket exists
+        bucket = storage_client.lookup_bucket(bucket_name)
+        if bucket:
+            logger.log_text(f"Bucket '{bucket_name}' exists with status code: 200")
+            return True
+        else:
+            logger.log_text(f"Bucket '{bucket_name}' does not exist with status code: 404", severity='ERROR')
+            return False
+
+    except GoogleAPIError as e:
+        status_code = e.code if hasattr(e, 'code') else 'Unknown'
+        logger.log_text(f"Error checking bucket '{bucket_name}' with status code: {status_code} - Error: {str(e)}", severity='ERROR')
+        return False
+
+# Example usage
+check_bucket_exists('your-bucket-name')
+2. Checking if a File Exists in the Bucket
+This function checks if a specific file (blob) exists in the bucket and logs the results and errors.
+
+python
+Copy code
+from google.cloud import storage, logging
+from google.api_core.exceptions import NotFound, GoogleAPIError
+
+def check_file_exists(bucket_name, file_name):
+    # Initialize logging client
+    logging_client = logging.Client()
+    logger = logging_client.logger("gcs-file-log")
+
+    try:
+        # Initialize GCS client
+        storage_client = storage.Client()
+
+        # Check if the bucket exists first
+        if not check_bucket_exists(bucket_name):
+            logger.log_text(f"Cannot check file '{file_name}' because bucket '{bucket_name}' does not exist", severity='ERROR')
+            return False
+
+        # Get the bucket
+        bucket = storage_client.bucket(bucket_name)
+
+        # Check if the file (blob) exists in the bucket
+        blob = bucket.blob(file_name)
+        if blob.exists():
+            logger.log_text(f"File '{file_name}' exists in bucket '{bucket_name}' with status code: 200")
+            return True
+        else:
+            logger.log_text(f"File '{file_name}' does not exist in bucket '{bucket_name}' with status code: 404", severity='ERROR')
+            return False
+
+    except GoogleAPIError as e:
+        status_code = e.code if hasattr(e, 'code') else 'Unknown'
+        logger.log_text(f"Error checking file '{file_name}' in bucket '{bucket_name}' with status code: {status_code} - Error: {str(e)}", severity='ERROR')
+        return False
+
+# Example usage
+check_file_exists('your-bucket-name', 'your-file-name')
+3. Logging All Activities
+Bucket Existence Check: The check_bucket_exists function checks if the bucket is present. It logs success (200) if the bucket exists, and failure (404) if it doesn't. Any API error will also be logged.
+File Existence Check: The check_file_exists function checks if a file (blob) exists within a specific bucket. It first checks the bucket existence, and if the bucket is found, it checks for the file. It logs both success (200) and failure (404), as well as any errors.
+Example Combined Usage:
+python
+Copy code
+def main():
+    # Initialize logging client
+    logging_client = logging.Client()
+
+    # Log bucket and file existence checks
+    bucket_name = 'your-bucket-name'
+    file_name = 'your-file-name'
+
+    # Check if the bucket exists
+    bucket_exists = check_bucket_exists(bucket_name)
+
+    # Check if the file exists if the bucket is valid
+    if bucket_exists:
+        file_exists = check_file_exists(bucket_name, file_name)
+
+main()
+Key Points:
+Logging: The operations for checking bucket and file existence are logged using Google Cloud's logging API.
+Separate Functions: We use separate functions for bucket and file existence checks (check_bucket_exists and check_file_exists), making the code modular.
+Error Handling: GoogleAPIError exceptions are caught, and both status codes and exception messages are logged for easier debugging.
+Status Codes: Success and error codes (200 for success, 404 for not found) are logged.
+This approach allows you to track the entire process of bucket and file validation along with status codes and detailed error logs.
