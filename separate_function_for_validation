@@ -1,3 +1,30 @@
+from google.cloud import storage
+from datetime import datetime, timezone
+
+# Initialize GCS client
+client = storage.Client()
+
+# Define your bucket and file name
+bucket_name = "your-bucket-name"
+file_name = "your-file-name"
+
+# Get the bucket and the file
+bucket = client.get_bucket(bucket_name)
+blob = bucket.get_blob(file_name)
+
+# Get file's creation time
+creation_time = blob.time_created
+
+# Get the current time
+current_time = datetime.now(timezone.utc)
+
+# Calculate the difference in days
+time_difference = current_time - creation_time
+days_difference = time_difference.days
+
+print(f"Time difference in days: {days_difference}")
+
+
 To log actual status codes from GCS, BigQuery, and Pub/Sub, it's essential to capture the status codes provided by the APIs when performing the operations. Below are examples showing how to log actual status codes for each service.
 
 1. Logging GCS Operations with Actual Status Code
