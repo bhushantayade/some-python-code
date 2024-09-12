@@ -1,0 +1,86 @@
+To achieve this workflow, you can follow these steps to trigger a Google Cloud Function when a new row is inserted into a BigQuery table, validate the details, and log the result (pass/fail) into another table:
+
+Steps:
+Create a Pub/Sub Topic for BigQuery Insertions:
+
+Use BigQuery’s Data Change Notifications (DCN) to automatically publish a message to a Pub/Sub topic whenever a new row is inserted.
+First, enable data change notification for your BigQuery table:
+bash
+Copy code
+bq update --set-async-notification-config=topic=<your-pubsub-topic> <your-dataset>.<your-table>
+Create a Pub/Sub Subscription:
+
+Create a subscription for the Pub/Sub topic you configured.
+bash
+Copy code
+gcloud pubsub subscriptions create <your-subscription> --topic=<your-pubsub-topic>
+Write a Google Cloud Function to Validate Data:
+
+Set up a Google Cloud Function to be triggered by the Pub/Sub topic. This function will receive messages whenever a new row is inserted.
+Inside the function, you can validate the inserted row's data.
+Make Entry in the Pass/Fail Table:
+
+Based on the validation logic, you can write the result (pass or fail) into another BigQuery table.
+Code Example:
+1. Pub/Sub Triggered Cloud Function:
+python
+Copy code
+import json
+import base64
+from google.cloud import bigquery
+
+def validate_data(data):
+    # Add your custom validation logic here
+    return True if "some_condition" in data else False
+
+def insert_pass_fail_entry(bq_client, dataset, table, file_id, status):
+    table_ref = bq_client.dataset(dataset).table(table)
+    row_to_insert = [
+        {u"file_id": file_id, u"validation_status": status}
+    ]
+    errors = bq_client.insert_rows_json(table_ref, row_to_insert)
+    if errors:
+        print(f"Failed to insert row: {errors}")
+    else:
+        print("Row inserted successfully.")
+
+def process_pubsub_event(event, context):
+    # Parse Pub/Sub message
+    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    data = json.loads(pubsub_message)
+    
+    # Extract relevant information
+    file_id = data.get("file_id")  # Assuming this field is in your table
+    
+    # Initialize BigQuery client
+    bq_client = bigquery.Client()
+    
+    # Validate the row data
+    is_valid = validate_data(data)
+    
+    # Insert validation result into another table
+    validation_status = "PASS" if is_valid else "FAIL"
+    insert_pass_fail_entry(bq_client, 'your_dataset', 'your_validation_table', file_id, validation_status)
+    
+    return 'Processing complete.'
+Steps to Deploy:
+Create the Cloud Function:
+
+bash
+Copy code
+gcloud functions deploy validateBigQueryRow \
+--runtime python310 \
+--trigger-topic <your-pubsub-topic> \
+--entry-point process_pubsub_event \
+--region <your-region>
+Validation Logic:
+
+In the validate_data function, add any specific business logic required for validation.
+Pass/Fail Table:
+
+Ensure that the your_validation_table table has the necessary columns like file_id and validation_status to store the results.
+Workflow Explanation:
+New Row Insertion: Whenever a new row is inserted into the target BigQuery table, a message is sent to the configured Pub/Sub topic.
+Cloud Function Triggered: The Pub/Sub message triggers the Google Cloud Function.
+Validation: The function extracts the row data, validates it, and inserts a pass or fail result into another BigQuery table.
+This setup provides a scalable and serverless solution for automating row validation and logging in BigQuery.
