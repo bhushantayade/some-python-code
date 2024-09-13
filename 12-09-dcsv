@@ -1,3 +1,26 @@
+from google.cloud import storage
+
+# Initialize GCS client
+client = storage.Client()
+
+# Define your bucket and folder name
+bucket_name = "your-bucket-name"  # Replace with your actual bucket name
+folder_name = "folder99/"
+
+# Get the bucket
+bucket = client.get_bucket(bucket_name)
+
+# Check if the folder exists
+blobs = bucket.list_blobs(prefix=folder_name, delimiter="/")
+
+# Checking if any blobs (files) or subfolders exist under the folder
+if any(blobs):
+    print(f"The folder '{folder_name}' exists in bucket '{bucket_name}'.")
+else:
+    print(f"The folder '{folder_name}' does not exist in bucket '{bucket_name}'.")
+
+
+
 To achieve this workflow, you can follow these steps to trigger a Google Cloud Function when a new row is inserted into a BigQuery table, validate the details, and log the result (pass/fail) into another table:
 
 Steps:
