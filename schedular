@@ -1,0 +1,45 @@
+import json
+import base64
+from google.cloud import bigquery
+from google.cloud import pubsub_v1
+
+# Initialize BigQuery client
+bq_client = bigquery.Client()
+
+# Pub/Sub topic to publish validated records
+pubsub_topic = 'projects/YOUR_PROJECT_ID/topics/YOUR_PUBSUB_TOPIC'
+
+def validate_data(record):
+    # Add your validation logic here (e.g., checking required fields)
+    if record.get('important_field'):
+        return True
+    return False
+
+def publish_to_pubsub(records):
+    publisher = pubsub_v1.PublisherClient()
+    for record in records:
+        message_data = json.dumps(record).encode('utf-8')
+        publisher.publish(pubsub_topic, message_data)
+
+def query_new_records():
+    query = """
+        SELECT * 
+        FROM `your_project.your_dataset.your_table`
+        WHERE timestamp_field > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+    """
+    
+    query_job = bq_client.query(query)
+    return [dict(row) for row in query_job]
+
+def pubsub_trigger(event, context):
+    # Decode the Pub/Sub message (if needed)
+    message = base64.b64decode(event['data']).decode('utf-8')
+
+    # Step 1: Query BigQuery for new records
+    new_records = query_new_records()
+
+    # Step 2: Validate the data
+    valid_records = [record for record in new_records if validate_data(record)]
+
+    # Step 3: Publish valid records to Pub/Sub for further processing
+    publish_to_pubsub(valid_records)
