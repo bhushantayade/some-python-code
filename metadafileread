@@ -1,0 +1,31 @@
+import json
+from google.cloud import storage
+
+def read_and_process_metadata(bucket_name, file_name):
+    # Initialize the GCS client
+    client = storage.Client()
+    
+    # Get the bucket and the blob (file)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+    
+    # Download the file's contents as a string
+    metadata_content = blob.download_as_text()
+
+    # Parse JSON content
+    try:
+        metadata_dict = json.loads(metadata_content)
+        print("Parsed Metadata:", metadata_dict)
+
+        # Process the metadata (e.g., access specific keys)
+        # For example, print all key-value pairs:
+        for key, value in metadata_dict.items():
+            print(f"{key}: {value}")
+
+    except json.JSONDecodeError:
+        print("The file is not in JSON format or has an invalid structure.")
+
+# Usage
+bucket_name = 'your-bucket-name'
+file_name = 'path/to/yourfile.metadata'
+read_and_process_metadata(bucket_name, file_name)
