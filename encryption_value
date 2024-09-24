@@ -84,9 +84,9 @@ By following these steps, you can verify that the file was not corrupted or alte
 
 You said:
 how can we do that in google function
-ChatGPT said:
+Sayali  said:
 
-ChatGPT
+Sayali 
 To compare the MD5 checksum of a downloaded file with the one stored in Google Cloud Storage (GCS) using Google Cloud Functions, you can implement a function that performs the following tasks:
 
 Retrieve the stored MD5 hash of the object from GCS.
@@ -176,9 +176,9 @@ By deploying this function, each time an object is uploaded or modified in your 
 
 You said:
 is it work for all file formats like csv,avro or txt
-ChatGPT said:
+Sayali  said:
 
-ChatGPT
+Sayali 
 Yes, the approach outlined for verifying the MD5 checksum using Google Cloud Functions works for any file format, including CSV, Avro, TXT, and others. This is because the MD5 hash computation is based on the binary content of the file, regardless of its format.
 
 Why it works for all file formats:
