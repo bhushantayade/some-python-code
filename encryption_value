@@ -1,4 +1,74 @@
 import hashlib
+from google.cloud import storage
+
+def compute_md5_in_chunks(blob, chunk_size=8 * 1024 * 1024):
+    """Download the file in chunks and compute the MD5 hash."""
+    md5_hash = hashlib.md5()
+    total_size = blob.size
+    start = 0
+
+    while start < total_size:
+        # Download a chunk of the file
+        end = min(start + chunk_size - 1, total_size - 1)
+        chunk = blob.download_as_bytes(start=start, end=end + 1)  # end is inclusive
+        
+        # Update MD5 with the chunk
+        md5_hash.update(chunk)
+        
+        # Move to the next chunk
+        start += chunk_size
+
+    # Return the final MD5 hash as a digest
+    return md5_hash.digest()
+
+def upload_file_to_gcs_and_compare_md5(bucket_name, file_path, destination_blob_name):
+    """Upload a file to GCS, download it in chunks, and compare MD5 checksums."""
+    # Initialize the storage client
+    storage_client = storage.Client()
+
+    # Get the bucket
+    bucket = storage_client.bucket(bucket_name)
+
+    # Compute the local MD5 hash of the file
+    local_md5 = compute_md5(file_path)
+    local_md5_base64 = base64.b64encode(local_md5).decode('utf-8')
+
+    # Upload the file
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(file_path)
+
+    # Retrieve the stored MD5 hash from GCS metadata (base64-encoded)
+    gcs_md5_base64 = blob.md5_hash
+
+    # Now compute the MD5 hash of the file by downloading it in chunks
+    downloaded_md5 = compute_md5_in_chunks(blob)
+    downloaded_md5_base64 = base64.b64encode(downloaded_md5).decode('utf-8')
+
+    # Compare the local MD5 with the GCS stored MD5 and the downloaded MD5
+    if local_md5_base64 == gcs_md5_base64 == downloaded_md5_base64:
+        print(f"MD5 match for {file_path}. File uploaded and downloaded successfully.")
+    else:
+        print(f"MD5 mismatch for {file_path}. File may be corrupted.")
+
+def compute_md5(file_path):
+    """Compute MD5 hash of a local file."""
+    md5_hash = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        # Read the file in chunks to avoid memory issues with large files
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    return md5_hash.digest()
+
+if __name__ == '__main__':
+    # Replace with your GCS bucket name, local file path, and destination object name
+    bucket_name = 'your-bucket-name'
+    file_path = 'path/to/local/file'
+    destination_blob_name = 'uploaded-file-name-in-gcs'
+
+    upload_file_to_gcs_and_compare_md5(bucket_name, file_path, destination_blob_name)
+
+
+import hashlib
 import base64
 from google.cloud import storage
 
