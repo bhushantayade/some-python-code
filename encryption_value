@@ -1,3 +1,50 @@
+import hashlib
+import base64
+from google.cloud import storage
+
+def compute_md5(file_path):
+    """Compute MD5 hash of a local file."""
+    md5_hash = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        # Read the file in chunks to avoid memory issues with large files
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    return md5_hash.digest()
+
+def upload_file_to_gcs(bucket_name, file_path, destination_blob_name):
+    """Upload a file to GCS and compare MD5 checksums."""
+    # Initialize the storage client
+    storage_client = storage.Client()
+
+    # Get the bucket
+    bucket = storage_client.bucket(bucket_name)
+
+    # Compute the local MD5 hash of the file
+    local_md5 = compute_md5(file_path)
+    local_md5_base64 = base64.b64encode(local_md5).decode('utf-8')
+
+    # Upload the file
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(file_path)
+
+    # Retrieve the stored MD5 hash from GCS metadata (base64-encoded)
+    gcs_md5_base64 = blob.md5_hash
+
+    # Compare the local MD5 with GCS's MD5 hash
+    if local_md5_base64 == gcs_md5_base64:
+        print(f"MD5 match for {file_path}. File uploaded successfully.")
+    else:
+        print(f"MD5 mismatch for {file_path}. File may be corrupted during upload.")
+
+if __name__ == '__main__':
+    # Replace with your GCS bucket name, local file path, and destination object name
+    bucket_name = 'your-bucket-name'
+    file_path = 'path/to/local/file'
+    destination_blob_name = 'uploaded-file-name-in-gcs'
+
+    upload_file_to_gcs(bucket_name, file_path, destination_blob_name)
+
+
 To verify the integrity of a file after downloading it from Google Cloud Storage (GCS), you can compare the MD5 checksum of the downloaded file with the MD5 hash stored in GCS. This ensures that the file has not been altered or corrupted during the transfer process.
 
 Here’s how you can achieve this step-by-step:
