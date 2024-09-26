@@ -134,3 +134,24 @@ Ensured correct parsing of CRC32C (whether hexadecimal or base64).
 Improved variable naming for clarity.
 Optionally, added MD5 checksum support if needed as a fallback.
 By addressing these issues and improvements, the code will be more reliable, maintainable, and less prone to runtime errors.
+
+
+import re
+import os
+
+def clean_and_change_extension(file_name):
+    # Use regex to find and remove any '_<number>' right before the current file extension
+    cleaned_file_name = re.sub(r'_\d+(?=\.\w+$)', '', file_name)
+    
+    # Change the file extension to '.metadata' using os.path.splitext
+    base_name, _ = os.path.splitext(cleaned_file_name)
+    new_file_name = base_name + '.metadata'
+    
+    return new_file_name
+
+# Usage examples
+file_name_with_number = "producer_file-type_123456_123456_version_filename_123.csv"
+file_name_without_number = "producer_file-type_123456_123456_version_filename.csv"
+
+print(clean_and_change_extension(file_name_with_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
+print(clean_and_change_extension(file_name_without_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
