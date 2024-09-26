@@ -183,3 +183,40 @@ print(clean_and_add_metadata_extension(file_name_with_number))  # Output: "produ
 print(clean_and_add_metadata_extension(file_name_without_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
 print(clean_and_add_metadata_extension(file_name_without_extension))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
 
+import base64
+
+def upload_file_to_gcs_and_compare_crc32c(bucket_name, file_path, destination_blob_name):
+    """Upload a file to GCS, download it in chunks, and compare CRC32C checksums."""
+    # Initialize the storage client
+    storage_client = storage.Client()
+
+    # Get the bucket
+    bucket = storage_client.bucket(bucket_name)
+
+    # Compute the local CRC32C checksum of the file
+    local_crc32c = compute_local_crc32c(file_path)
+
+    # Upload the file
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(file_path)
+
+    # Retrieve the stored CRC32C checksum from GCS metadata (in base64)
+    gcs_crc32c_base64 = blob.crc32c
+
+    # Decode the base64 CRC32C value into bytes
+    gcs_crc32c_bytes = base64.b64decode(gcs_crc32c_base64)
+
+    # Convert the bytes into an integer (to match with our computed checksum)
+    gcs_crc32c_int = int.from_bytes(gcs_crc32c_bytes, byteorder='big')
+
+    # Now compute the CRC32C checksum of the file by downloading it in chunks
+    downloaded_crc32c = compute_crc32c_in_chunks(blob)
+    downloaded_crc32c_int = int.from_bytes(downloaded_crc32c, byteorder='big')
+
+    # Compare the local CRC32C with GCS's stored CRC32C and the downloaded CRC32C
+    if local_crc32c == gcs_crc32c_int == downloaded_crc32c_int:
+        print(f"CRC32C match for {file_path}. File uploaded and downloaded successfully.")
+    else:
+        print(f"CRC32C mismatch for {file_path}. File may be corrupted.")
+
+
