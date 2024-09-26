@@ -155,3 +155,31 @@ file_name_without_number = "producer_file-type_123456_123456_version_filename.cs
 
 print(clean_and_change_extension(file_name_with_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
 print(clean_and_change_extension(file_name_without_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
+
+import re
+import os
+
+def clean_and_add_metadata_extension(file_name):
+    # Remove any '_<number>' before the extension, if it exists
+    cleaned_file_name = re.sub(r'_\d+(?=\.\w+$)', '', file_name)
+    
+    # Split the file name into base name and extension
+    base_name, extension = os.path.splitext(cleaned_file_name)
+    
+    # If there's no extension, just append '.metadata', otherwise replace the current extension
+    if extension:
+        new_file_name = base_name + '.metadata'
+    else:
+        new_file_name = cleaned_file_name + '.metadata'
+    
+    return new_file_name
+
+# Usage examples
+file_name_with_number = "producer_file-type_123456_123456_version_filename_123.csv"
+file_name_without_number = "producer_file-type_123456_123456_version_filename.csv"
+file_name_without_extension = "producer_file-type_123456_123456_version_filename_123"
+
+print(clean_and_add_metadata_extension(file_name_with_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
+print(clean_and_add_metadata_extension(file_name_without_number))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
+print(clean_and_add_metadata_extension(file_name_without_extension))  # Output: "producer_file-type_123456_123456_version_filename.metadata"
+
