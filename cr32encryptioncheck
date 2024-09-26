@@ -219,4 +219,95 @@ def upload_file_to_gcs_and_compare_crc32c(bucket_name, file_path, destination_bl
     else:
         print(f"CRC32C mismatch for {file_path}. File may be corrupted.")
 
+//////new code
+The error you're getting—No md5 checksum was returned from the service—suggests that the object in Google Cloud Storage may be a composite object. Composite objects in GCS do not have MD5 checksums, and depending on how they are uploaded or composed, they may also not return a CRC32C checksum for individual chunks.
+
+When you're using blob.download_as_bytes(start=start, end=end + 1) to download the file in chunks, the error indicates that the system is trying to validate the checksum for each chunk, but it is failing because no MD5 checksum is available for the composite object.
+
+How to Handle Composite Objects
+CRC32C for Composite Objects:
+GCS doesn't provide an MD5 checksum for composite objects. Instead, you can rely on CRC32C for integrity validation. However, if you are downloading in chunks, the CRC32C checksum will only apply to the full file, not to each chunk.
+Disable MD5 Checksum Validation for Composite Objects:
+To avoid the error, you can disable the MD5 checksum validation while downloading composite objects.
+You may also want to ensure that you're not using MD5 checks for such objects and only rely on the CRC32C checksum for validation.
+Potential Solutions:
+1. Use download_as_bytes() without Chunking for Composite Objects
+
+If the object is a composite object, you can download it all at once without chunking, as chunked downloads will trigger the checksum issue. Use download_as_bytes() for the entire file, then compute the checksum afterward:
+
+python
+Copy code
+def download_entire_blob(blob):
+    """Download the entire blob at once for composite objects."""
+    return blob.download_as_bytes()
+
+# Call the function to download the file
+file_content = download_entire_blob(blob)
+After downloading, you can compute the CRC32C checksum on the downloaded content.
+
+2. Use CRC32C for Entire File Validation After Download
+
+You can download the file in chunks without triggering the MD5 checksum validation by explicitly avoiding MD5 checks during the download process.
+
+python
+Copy code
+import google_crc32c
+from google.cloud import storage
+
+def download_blob_in_chunks(blob, chunk_size=8 * 1024 * 1024):
+    """Download the file in chunks without checking MD5."""
+    crc32c_hash = google_crc32c.Checksum()
+    total_size = blob.size
+    start = 0
+
+    while start < total_size:
+        # Download a chunk without triggering MD5 validation
+        end = min(start + chunk_size - 1, total_size - 1)
+        chunk = blob.download_as_bytes(start=start, end=end + 1)  # end is inclusive
+
+        # Update CRC32C with the chunk
+        crc32c_hash.update(chunk)
+        
+        # Move to the next chunk
+        start += chunk_size
+
+    # Return the final CRC32C hash for the entire file
+    return crc32c_hash.digest()
+
+def download_and_validate_crc32c(bucket_name, blob_name):
+    """Download the file in chunks and validate CRC32C checksum."""
+    # Initialize the storage client
+    storage_client = storage.Client()
+
+    # Get the bucket and blob
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+
+    # Compute the CRC32C checksum while downloading in chunks
+    downloaded_crc32c = download_blob_in_chunks(blob)
+    downloaded_crc32c_int = int.from_bytes(downloaded_crc32c, byteorder='big')
+
+    # Retrieve the stored CRC32C checksum from GCS metadata
+    gcs_crc32c_base64 = blob.crc32c
+    gcs_crc32c_bytes = base64.b64decode(gcs_crc32c_base64)
+    gcs_crc32c_int = int.from_bytes(gcs_crc32c_bytes, byteorder='big')
+
+    # Compare checksums
+    if downloaded_crc32c_int == gcs_crc32c_int:
+        print("CRC32C match! File is valid.")
+    else:
+        print("CRC32C mismatch! File might be corrupted.")
+3. Use the compose Feature Only When Necessary
+
+Composite objects are often created using the compose feature of GCS (e.g., combining multiple objects into one). To avoid this issue:
+
+Try avoiding composite objects unless necessary.
+If you’re using the compose feature, make sure you handle the integrity check using CRC32C instead of MD5.
+Key Points:
+MD5 and Composite Objects: GCS doesn't provide MD5 checksums for composite objects, so any attempt to rely on MD5 for integrity checks on composite objects will fail.
+CRC32C for Composite Objects: Use CRC32C instead of MD5 for composite objects. Ensure that your download mechanism doesn't expect MD5 checksums for such objects.
+Download Without MD5 Validation: If you’re getting the error during chunked downloads, download the entire object at once or ensure you're only relying on CRC32C.
+This approach should allow you to avoid the MD5 checksum error while downloading in chunks and still maintain file integrity checks using CRC32C.
+
+
 
