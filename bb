@@ -1,3 +1,10 @@
+SELECT *
+FROM `your_project.your_dataset.your_table`
+WHERE timestamp_column >= TIMESTAMP_SUB(TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), HOUR), INTERVAL 1 HOUR)
+  AND timestamp_column < TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), HOUR)
+
+
+
 import csv
 import pandas as pd
 from google.cloud import storage
