@@ -1,3 +1,33 @@
+SELECT t1.*, t2.*
+FROM table1 t1
+JOIN table2 t2
+ON SPLIT(t1.path_column, '/')[OFFSET(LENGTH(SPLIT(t1.path_column, '/')) - 1)] = t2.file_name -- always join on file_name
+AND (
+    -- Only join on folder_name if folder_name is present (path has more than 1 segment before the file_name)
+    CASE 
+        WHEN ARRAY_LENGTH(SPLIT(t1.path_column, '/')) > 2 THEN SPLIT(t1.path_column, '/')[OFFSET(LENGTH(SPLIT(t1.path_column, '/')) - 2)] = t2.folder_name
+        ELSE TRUE -- skip folder join condition
+    END
+)
+
+
+
+SELECT *
+FROM table1 t1
+JOIN table2 t2 
+ON t1.path = CONCAT('project/bucket_name/', t2.folder_name, '/', t2.file_name)
+
+
+
+
+SELECT *
+FROM table1 t1
+JOIN table2 t2 
+ON SUBSTRING_INDEX(t1.path, '/', -1) = t2.file_name
+
+
+
+
 SELECT *
 FROM table1 t1
 JOIN table2 t2 
