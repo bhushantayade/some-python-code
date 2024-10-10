@@ -1,3 +1,12 @@
+SELECT *
+FROM table1 t1
+JOIN table2 t2 
+ON t1.path LIKE CONCAT('%/', t2.file_name) 
+   AND t1.path LIKE CONCAT('%/', t2.folder_name, '/%')
+
+
+
+
 from google.cloud import storage
 
 # Initialize GCS client
