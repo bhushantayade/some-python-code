@@ -1,3 +1,29 @@
+SELECT 
+  main_table.date,
+  
+  -- Count of successful file IDs
+  COUNT(CASE WHEN status = 'success' THEN file_id END) AS success_count,
+  
+  -- Count of failed file IDs
+  COUNT(CASE WHEN status = 'fail' THEN file_id END) AS fail_count,
+  
+  -- Comma-separated list of successful file IDs
+  STRING_AGG(CASE WHEN status = 'success' THEN file_id END, ', ') AS success_file_ids,
+  
+  -- Comma-separated list of failed file IDs
+  STRING_AGG(CASE WHEN status = 'fail' THEN file_id END, ', ') AS fail_file_ids
+  
+FROM 
+  main_table
+JOIN 
+  file_status_table f ON main_table.file_id = f.file_id -- Example join with file_status_table
+  
+GROUP BY 
+  main_table.date
+ORDER BY 
+  main_table.date;
+
+
 SELECT t1.*, t2.*
 FROM table1 t1
 JOIN table2 t2
