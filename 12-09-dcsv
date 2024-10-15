@@ -1,4 +1,12 @@
 SELECT 
+    column1,                -- A column that you want to group by
+    column2,                -- Another column for aggregation
+    ARRAY_AGG(text_column ORDER BY timestamp_column DESC LIMIT 1)[OFFSET(0)] AS latest_text_column
+FROM your_table
+GROUP BY column1, column2;
+
+
+SELECT 
   main_table.date,
   
   -- Count of successful file IDs
