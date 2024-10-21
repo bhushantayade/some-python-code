@@ -1,3 +1,19 @@
+SELECT *
+FROM status_table s
+WHERE s.status = 'fail'
+AND NOT EXISTS (
+    SELECT 1
+    FROM status_table s2
+    WHERE s2.id = s.id
+    AND s2.status = 'pass'
+    AND s2.timestamp = (
+        SELECT MAX(s3.timestamp)
+        FROM status_table s3
+        WHERE s3.id = s.id
+    )
+);
+
+
 SELECT 
     column1,                -- A column that you want to group by
     column2,                -- Another column for aggregation
