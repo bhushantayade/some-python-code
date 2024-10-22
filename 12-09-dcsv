@@ -1,3 +1,51 @@
+import smtplib
+import socket
+from smtplib import SMTPException
+import os
+
+def send_email(request):
+    try:
+        smtp_server = 'smtp.example.com'
+        sender_email = os.getenv('SENDER_EMAIL')
+        receiver_email = os.getenv('RECEIVER_EMAIL')
+        message = 'Subject: Test Email\n\nThis is a test email from Google Cloud Function.'
+
+        # Setting timeout and handling it
+        with smtplib.SMTP(smtp_server, 587, timeout=10) as server:
+            server.starttls()
+            server.login(os.getenv('SMTP_USER'), os.getenv('SMTP_PASSWORD'))
+            server.sendmail(sender_email, receiver_email, message)
+            return "Email sent successfully", 200
+
+    except socket.timeout:
+        return "Error: Connection to the SMTP server timed out.", 500
+
+    except SMTPException as e:
+        return f"SMTP error occurred: {e}", 500
+
+    except Exception as e:
+        return f"An error occurred: {e}", 500
+
+import os
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
+def send_email(request):
+    try:
+        message = Mail(
+            from_email=os.getenv('SENDER_EMAIL'),
+            to_emails=os.getenv('RECEIVER_EMAIL'),
+            subject='Test Email from Cloud Function',
+            plain_text_content='This is a test email.'
+        )
+        sg = SendGridAPIClient(os.getenv('SENDGRID_API_KEY'))
+        response = sg.send(message)
+        return "Email sent successfully", 200
+
+    except Exception as e:
+        return f"An error occurred: {e}", 500
+
+
 SELECT *
 FROM status_table s
 WHERE s.status = 'fail'
