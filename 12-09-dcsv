@@ -1,3 +1,15 @@
+Subject: Diwali Leave Request
+
+Dear [Manager's Name],
+
+I hope this message finds you well. I would like to request leave from [start date] to [end date] to celebrate Diwali with my family. I’ve planned my tasks to ensure a smooth workflow during my absence.
+
+Thank you for considering my request.
+
+Best regards,
+[Your Name]
+
+
 import smtplib
 import socket
 from smtplib import SMTPException
