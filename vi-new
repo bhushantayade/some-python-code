@@ -1,0 +1,47 @@
+CREATE OR REPLACE VIEW `project.dataset.daily_file_counts` AS
+WITH
+  incoming AS (
+    SELECT
+      DATE(received_timestamp) AS file_date,
+      COUNT(*) AS incoming_count
+    FROM
+      `project.dataset.incoming_files`
+    GROUP BY
+      file_date
+  ),
+  processed AS (
+    SELECT
+      DATE(processed_timestamp) AS file_date,
+      COUNT(*) AS processed_count
+    FROM
+      `project.dataset.processed_files`
+    GROUP BY
+      file_date
+  ),
+  status AS (
+    SELECT
+      DATE(status_timestamp) AS file_date,
+      COUNT(*) AS status_count
+    FROM
+      `project.dataset.file_status`
+    GROUP BY
+      file_date
+  )
+SELECT
+  incoming.file_date AS date,
+  IFNULL(incoming.incoming_count, 0) AS files_received,
+  IFNULL(processed.processed_count, 0) AS files_processed,
+  IFNULL(status.status_count, 0) AS files_logged
+FROM
+  incoming
+FULL OUTER JOIN
+  processed
+ON
+  incoming.file_date = processed.file_date
+FULL OUTER JOIN
+  status
+ON
+  incoming.file_date = status.file_date
+ORDER BY
+  date;
+
