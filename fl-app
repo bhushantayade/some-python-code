@@ -20,8 +20,13 @@ def flask_app(request):
     return app(request)
 
 def flask_app(request):
-    """Adapter function to handle the Cloud Function request."""
-    return app.handle_request(request.environ, start_response)
+    """
+    Adapter for Google Cloud Function.
+    Uses Flask's WSGI request/response handling to process the request.
+    """
+    with app.request_context(request.environ):
+        response = app.full_dispatch_request()
+        return response
 
 
 2. Run the app:
