@@ -19,6 +19,10 @@ def status():
 def flask_app(request):
     return app(request)
 
+def flask_app(request):
+    """Adapter function to handle the Cloud Function request."""
+    return app.handle_request(request.environ, start_response)
+
 
 2. Run the app:
 functions-framework --target=flask_app --port=8080
@@ -35,3 +39,20 @@ Test the Echo API with POST data:
 curl -X POST https://REGION-PROJECT_ID.cloudfunctions.net/flask_app/echo \
     -H "Content-Type: application/json" \
     -d '{"message": "Hello, Cloud Functions!"}'
+
+
+Alternate Fix: Use werkzeug.serving.run_simple() (Optional for Local Testing)
+If you’re testing locally without using functions-framework, ensure you’re running a WSGI-compatible server. Here’s how to adapt for testing locally:
+
+if __name__ == "__main__":
+    from werkzeug.serving import run_simple
+
+    run_simple("localhost", 8080, app)
+
+curl http://localhost:8080/
+curl http://localhost:8080/status
+curl -X POST http://localhost:8080/echo -H "Content-Type: application/json" -d '{"key": "value"}'
+
+
+
+
