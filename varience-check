@@ -1,0 +1,83 @@
+Solution Overview
+BigQuery Table Structure:
+file_size_table schema:
+file_id (STRING): Unique identifier for each file.
+size (INTEGER): File size in bytes.
+create_ts (TIMESTAMP): File creation timestamp.
+Logic:
+For each new incoming file, fetch its size and timestamp.
+Query the last two days' data from file_size_table.
+Calculate the 2-day average file size.
+Compare the new file's size against the 2-day average and compute the variance.
+Log or alert if the variance exceeds a threshold.
+Implementation:
+Use a Google Cloud Function to trigger this logic whenever a new file is processed.
+Use BigQuery SQL queries to compute the 2-day average.
+
+  import os
+from google.cloud import bigquery
+import json
+
+# Initialize BigQuery client
+client = bigquery.Client()
+
+def calculate_2day_avg_and_variance(event, context):
+    """
+    Cloud Function to calculate file size variance against the 2-day average.
+    Triggered by new incoming file metadata.
+    """
+    # Parse event data (assuming Pub/Sub message contains file metadata)
+    data = json.loads(event['data'].decode('utf-8'))
+    file_id = data.get('file_id')
+    size = int(data.get('size'))  # File size in bytes
+    create_ts = data.get('create_ts')  # File creation timestamp (ISO 8601 format)
+
+    if not file_id or not size or not create_ts:
+        print("Invalid input data.")
+        return
+
+    print(f"Processing file: {file_id}, Size: {size} bytes, Timestamp: {create_ts}")
+
+    # Query the 2-day average from BigQuery
+    query = f"""
+        SELECT AVG(size) AS avg_size
+        FROM `your_project_id.your_dataset_id.file_size_table`
+        WHERE create_ts BETWEEN TIMESTAMP_SUB(TIMESTAMP('{create_ts}'), INTERVAL 2 DAY)
+                            AND TIMESTAMP('{create_ts}')
+    """
+    query_job = client.query(query)
+    results = query_job.result()
+
+    avg_size = 0
+    for row in results:
+        avg_size = row.avg_size if row.avg_size is not None else 0
+
+    print(f"2-Day Average Size: {avg_size} bytes")
+
+    # Calculate variance
+    if avg_size > 0:
+        variance = ((size - avg_size) / avg_size) * 100
+        print(f"Variance: {variance:.2f}%")
+
+        # Flag if variance exceeds threshold (e.g., 20%)
+        threshold = 20
+        if abs(variance) > threshold:
+            print(f"ALERT: File size variance for {file_id} exceeds {threshold}%")
+    else:
+        print("No data available for the past 2 days to calculate average.")
+
+    # Optionally, insert the new file into BigQuery table
+    table_id = "your_project_id.your_dataset_id.file_size_table"
+    rows_to_insert = [
+        {
+            "file_id": file_id,
+            "size": size,
+            "create_ts": create_ts,
+        }
+    ]
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors:
+        print(f"Failed to insert data: {errors}")
+    else:
+        print(f"Successfully inserted file: {file_id}")
+
