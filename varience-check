@@ -81,3 +81,69 @@ def calculate_2day_avg_and_variance(event, context):
     else:
         print(f"Successfully inserted file: {file_id}")
 
+#####
+import ijson
+from google.cloud import storage
+
+def process_jsonl(event, context):
+    # File details from event
+    bucket_name = event['bucket']
+    file_name = event['name']
+
+    # Initialize Cloud Storage client
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+
+    # Stream the file from Cloud Storage
+    file_stream = blob.download_as_bytes()
+    
+    # Use ijson for schema extraction
+    schema = set()
+
+    # Stream through the file and extract schema
+    for obj in ijson.items(file_stream, 'item'):
+        schema.update(obj.keys())
+        # Limit to first 1000 lines for performance
+        if len(schema) > 1000:
+            break
+
+    print("Extracted Schema:", schema)
+
+
+import pandas as pd
+from google.cloud import storage
+
+def process_jsonl(event, context):
+    # File details from event
+    bucket_name = event['bucket']
+    file_name = event['name']
+
+    # Initialize Cloud Storage client
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+
+    # Stream the file as a readable object
+    file_stream = blob.download_as_text()
+
+    # Initialize an empty set for schema extraction
+    schema = set()
+
+    # Process the file in chunks
+    chunk_size = 100000  # Number of lines per chunk
+    lines = file_stream.splitlines()
+
+    for i in range(0, len(lines), chunk_size):
+        # Read a chunk into a DataFrame
+        chunk = pd.read_json("\n".join(lines[i:i+chunk_size]), lines=True)
+
+        # Extract and update schema
+        schema.update(chunk.columns)
+
+        # Break early if schema extraction is complete (optional)
+        if len(schema) > 1000:
+            break
+
+    print("Extracted Schema:", schema)
+
