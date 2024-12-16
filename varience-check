@@ -147,3 +147,49 @@ def process_jsonl(event, context):
 
     print("Extracted Schema:", schema)
 
+
+#####
+import pandas as pd
+
+# Function to extract only keys
+def extract_keys(df):
+    keys = set()
+    for col in df.columns:
+        first_valid = df[col].dropna().iloc[0] if not df[col].dropna().empty else None
+        
+        if isinstance(first_valid, dict):
+            nested_df = pd.json_normalize(df[col].dropna().tolist())
+            keys.add(col)
+            nested_keys = extract_keys(nested_df)
+            keys.update(f"{col}.{k}" for k in nested_keys)
+        
+        elif isinstance(first_valid, list):
+            exploded = df[col].explode().dropna()
+            if not exploded.empty and isinstance(exploded.iloc[0], dict):
+                nested_list_df = pd.json_normalize(exploded.tolist())
+                keys.add(col)
+                nested_keys = extract_keys(nested_list_df)
+                keys.update(f"{col}.{k}" for k in nested_keys)
+            else:
+                keys.add(col)
+        else:
+            keys.add(col)
+    
+    return keys
+
+# Reading JSON file in chunks
+chunk_size = 1000
+json_file = "large_file.json"
+
+all_keys = set()
+
+# Process each chunk
+for chunk in pd.read_json(json_file, lines=True, chunksize=chunk_size):
+    chunk_keys = extract_keys(chunk)
+    all_keys.update(chunk_keys)
+
+# Pretty print the final list of keys
+import pprint
+pprint.pprint(sorted(all_keys))
+
+
