@@ -45,3 +45,100 @@ ON
 ORDER BY
   date;
 
+
+######
+CREATE OR REPLACE VIEW `project.dataset.extracted_json_view` AS
+WITH parsed_data AS (
+  SELECT 
+    file_id, 
+    key_name,
+    JSON_EXTRACT(json_string, FORMAT('$.%s', key_name)) AS json_data
+  FROM 
+    `project.dataset.your_table`, 
+    UNNEST(JSON_EXTRACT_KEYS(json_string)) AS key_name
+),
+flattened_data AS (
+  SELECT
+    file_id,
+    key_name,
+    JSON_EXTRACT_SCALAR(entry, '$.key') AS key,
+    CAST(JSON_EXTRACT_SCALAR(entry, '$.value') AS INT64) AS value
+  FROM 
+    parsed_data, 
+    UNNEST(JSON_EXTRACT_ARRAY(json_data)) AS entry
+)
+SELECT
+  file_id,
+  "key" AS attribute,
+  key AS attribute_value
+FROM
+  flattened_data
+UNION ALL
+SELECT
+  file_id,
+  "value" AS attribute,
+  CAST(value AS STRING) AS attribute_value
+FROM
+  flattened_data;
+
+
+Examples of Using JSON_EXTRACT in the WHERE Clause
+1. Filtering String Values
+
+If you have a table project.dataset.your_table with a column json_string like this:
+
+{
+  "key": "Hello World",
+  "value": 123
+}
+Query: Filter where the key equals "Hello World":
+
+SELECT *
+FROM `project.dataset.your_table`
+WHERE JSON_EXTRACT_SCALAR(json_string, '$.key') = 'Hello World';
+2. Filtering Numeric Values
+
+If you want to filter where the value is greater than 100:
+
+SELECT *
+FROM `project.dataset.your_table`
+WHERE CAST(JSON_EXTRACT(json_string, '$.value') AS INT64) > 100;
+3. Using JSON_EXTRACT for Nested Filtering
+
+If the JSON is more complex, like:
+
+{
+  "details": {
+    "status": "processed",
+    "count": 10
+  }
+}
+Query: Filter where status = "processed" and count > 5:
+
+SELECT *
+FROM `project.dataset.your_table`
+WHERE JSON_EXTRACT_SCALAR(json_string, '$.details.status') = 'processed'
+AND CAST(JSON_EXTRACT(json_string, '$.details.count') AS INT64) > 5;
+4. Filtering with Arrays
+
+If the JSON contains an array:
+
+{
+  "items": [
+    {"name": "item1", "price": 50},
+    {"name": "item2", "price": 100}
+  ]
+}
+Query: Filter where any item's price is greater than 80:
+
+SELECT *
+FROM `project.dataset.your_table`
+WHERE EXISTS (
+  SELECT 1 
+  FROM UNNEST(JSON_EXTRACT_ARRAY(json_string, '$.items')) AS item
+  WHERE CAST(JSON_EXTRACT_SCALAR(item, '$.price') AS INT64) > 80
+);
+Best Practices:
+Use JSON_EXTRACT_SCALAR when working with simple string comparisons to avoid extra parsing.
+Cast Values if you are comparing numeric fields.
+Use EXISTS or UNNEST when working with arrays.
