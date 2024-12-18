@@ -142,3 +142,14 @@ Best Practices:
 Use JSON_EXTRACT_SCALAR when working with simple string comparisons to avoid extra parsing.
 Cast Values if you are comparing numeric fields.
 Use EXISTS or UNNEST when working with arrays.
+
+SELECT
+  file_id,
+  key_name,
+  JSON_EXTRACT(json_string, FORMAT('$.%s', key_name)) AS extracted_data
+FROM
+  `project.dataset.json_table`, 
+  UNNEST(JSON_EXTRACT_KEYS(json_string)) AS key_name
+WHERE
+  key_name LIKE 'aw3%';
+
