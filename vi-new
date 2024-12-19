@@ -153,3 +153,24 @@ FROM
 WHERE
   key_name LIKE 'aw3%';
 
+
+#######
+WITH parsed_data AS (
+  SELECT
+    file_id,
+    key_name,
+    JSON_EXTRACT(json_string, FORMAT('$.%s', key_name)) AS extracted_data
+  FROM
+    `project.dataset.json_table`,
+    UNNEST(REGEXP_EXTRACT_ALL(json_string, r'"([^"]+)":')) AS key_name
+)
+SELECT 
+  file_id,
+  key_name,
+  extracted_data
+FROM 
+  parsed_data
+WHERE 
+  key_name LIKE 'aw3%';
+
+
