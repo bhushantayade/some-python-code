@@ -173,4 +173,29 @@ FROM
 WHERE 
   key_name LIKE 'aw3%';
 
+####
+
+import re
+
+# Sample dictionary
+data = {
+    "aw34asdada": [{"key": "Hello World", "value": 123}],
+    "bhusedada": [{"st_date": "12-12-2020", "ed": 123}],
+    "aw56something": [{"key": "Test Key", "value": 456}]
+}
+
+# Find keys that match the pattern (like 'aw3%')
+pattern = re.compile(r'^aw3')
+
+# Append a value to matching keys
+new_entry = {"key": "New Entry", "value": 999}
+
+for key in data.keys():
+    if pattern.match(key):
+        data[key].append(new_entry)
+
+# Print updated dictionary
+print(data)
+
+
 
