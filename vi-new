@@ -197,5 +197,43 @@ for key in data.keys():
 # Print updated dictionary
 print(data)
 
+### new code
+WITH parsed_data AS (
+  SELECT
+    file_id,
+    key_name,
+    JSON_QUERY(json_string, CONCAT('$.', key_name)) AS extracted_data
+  FROM
+    `project.dataset.json_table`,
+    UNNEST(REGEXP_EXTRACT_ALL(json_string, r'"([^"]+)":')) AS key_name
+)
+SELECT 
+  file_id,
+  key_name,
+  extracted_data
+FROM 
+  parsed_data
+WHERE 
+  key_name LIKE 'aw3%' 
+  AND extracted_data IS NOT NULL;
 
+## one more approch
 
+WITH parsed_data AS (
+  SELECT
+    file_id,
+    key_name,
+    JSON_VALUE(json_string, CONCAT('$.', key_name)) AS extracted_data
+  FROM
+    `project.dataset.json_table`,
+    UNNEST(REGEXP_EXTRACT_ALL(json_string, r'"([^"]+)":')) AS key_name
+)
+SELECT 
+  file_id,
+  key_name,
+  extracted_data
+FROM 
+  parsed_data
+WHERE 
+  key_name LIKE 'aw3%' 
+  AND extracted_data IS NOT NULL;
