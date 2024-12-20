@@ -1,4 +1,25 @@
 my_dict = {'a': 1, 'b': 2, 'c': 3}
+key_mapping = {'a': 'alpha', 'b': 'beta'}  # Old to new keys
+
+# Use a dictionary comprehension
+my_dict = {key_mapping.get(k, k): v for k, v in my_dict.items()}
+
+print(my_dict)
+
+
+my_dict = {'a': 1, 'b': 2, 'c': 3}
+
+# Replace key 'b' with 'new_key'
+old_key = 'b'
+new_key = 'new_key'
+
+if old_key in my_dict:
+    my_dict[new_key] = my_dict.pop(old_key)
+
+print(my_dict)
+
+
+my_dict = {'a': 1, 'b': 2, 'c': 3}
 new_dict = {k: v for k, v in my_dict.items() if v != 2}
 print(new_dict)
 
