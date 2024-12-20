@@ -1,3 +1,8 @@
+my_dict = {'a': 1, 'b': 2, 'c': 3}
+new_dict = {k: v for k, v in my_dict.items() if v != 2}
+print(new_dict)
+
+
 CREATE OR REPLACE VIEW `project.dataset.daily_file_counts` AS
 WITH
   incoming AS (
