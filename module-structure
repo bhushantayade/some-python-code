@@ -1,1 +1,107 @@
+Directory Structure
+file_validation_function/
+├── main.py             # Entry point of the Cloud Function
+├── requirements.txt    # Dependencies
+├── validation/
+│   ├── __init__.py     # Marks the folder as a module
+│   ├── file_type.py    # Validates file type
+│   ├── file_size.py    # Validates file size
+│   ├── schema.py       # Validates file schema
+│   └── utils.py        # Utility functions
+1. main.py (Cloud Function Entry Point)
+import os
+from google.cloud import storage
+from validation.file_type import validate_file_type
+from validation.file_size import validate_file_size
+from validation.schema import validate_schema
+
+def validate_file(event, context):
+    """Triggered by a change to a Cloud Storage bucket."""
+    bucket_name = event['bucket']
+    file_name = event['name']
+
+    # Initialize the storage client
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
+
+    print(f"Processing file: {file_name} in bucket: {bucket_name}")
+
+    # Step 1: Validate file type
+    if not validate_file_type(file_name):
+        print(f"Invalid file type: {file_name}")
+        return
+
+    # Step 2: Validate file size
+    if not validate_file_size(blob.size):
+        print(f"Invalid file size: {file_name}")
+        return
+
+    # Step 3: Validate schema
+    file_content = blob.download_as_text()
+    if not validate_schema(file_content):
+        print(f"Invalid schema: {file_name}")
+        return
+
+    print(f"File validation successful: {file_name}")
+2. validation/file_type.py
+def validate_file_type(file_name):
+    """Validate the file type based on the extension."""
+    allowed_extensions = ['csv', 'json', 'xml']
+    file_extension = file_name.split('.')[-1].lower()
+
+    if file_extension not in allowed_extensions:
+        print(f"File type '{file_extension}' is not allowed.")
+        return False
+
+    print(f"File type '{file_extension}' is valid.")
+    return True
+3. validation/file_size.py
+def validate_file_size(file_size, max_size=50 * 1024 * 1024):
+    """Validate the file size. Default max size: 50 MB."""
+    if file_size > max_size:
+        print(f"File size {file_size} exceeds the maximum allowed size of {max_size}.")
+        return False
+
+    print(f"File size {file_size} is valid.")
+    return True
+4. validation/schema.py
+import json
+
+def validate_schema(file_content):
+    """Validate the schema of the file content."""
+    try:
+        data = json.loads(file_content)  # Assuming JSON files for this example
+        required_keys = ["id", "name", "value"]
+
+        for key in required_keys:
+            if key not in data:
+                print(f"Missing required key: {key}")
+                return False
+
+        print("File schema is valid.")
+        return True
+
+    except json.JSONDecodeError:
+        print("File content is not valid JSON.")
+        return False
+5. validation/utils.py (Optional)
+def is_empty(content):
+    """Check if the file content is empty."""
+    return not content.strip()
+6. requirements.txt
+google-cloud-storage
+Deploying the Function
+To deploy the function:
+
+gcloud functions deploy validate_file \
+    --runtime python310 \
+    --trigger-resource YOUR_BUCKET_NAME \
+    --trigger-event google.storage.object.finalize \
+    --entry-point validate_file
+Key Features of the Structure
+Modularity: Separate validation logic into individual modules for easy scalability.
+Reusability: Functions in utils.py can be reused across modules.
+Error Handling: Each validation step logs meaningful messages to help with debugging.
+Extensibility: Add new validation criteria by creating additional modules.
 
