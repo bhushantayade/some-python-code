@@ -1,3 +1,74 @@
+from google.cloud import bigquery
+import json
+
+# Initialize BigQuery client
+client = bigquery.Client()
+
+def file_size_variance_check(event, context):
+    """
+    Cloud Function to calculate file size variance based on the last entry for each of the last 4 days.
+    Triggered by new file metadata.
+    """
+    # Parse event data (assuming Pub/Sub message contains file metadata)
+    data = json.loads(event['data'].decode('utf-8'))
+    file_id = data.get('file_id')
+    size = int(data.get('size'))  # New file size in bytes
+    create_ts = data.get('create_ts')  # File creation timestamp (ISO 8601 format)
+
+    if not file_id or not size or not create_ts:
+        print("Invalid input data.")
+        return
+
+    print(f"Processing file: {file_id}, Size: {size} bytes, Timestamp: {create_ts}")
+
+    # Query to get the last entry for each day over the last 4 days
+    query = f"""
+        SELECT MAX(create_ts) AS last_entry_ts, size
+        FROM `your_project_id.your_dataset_id.file_size_table`
+        WHERE file_id = '{file_id}' 
+          AND create_ts BETWEEN TIMESTAMP_SUB(TIMESTAMP('{create_ts}'), INTERVAL 4 DAY)
+                            AND TIMESTAMP('{create_ts}')
+        GROUP BY DATE(create_ts), size
+    """
+    query_job = client.query(query)
+    results = query_job.result()
+
+    # Calculate the average size for the last 4 days
+    daily_sizes = [row.size for row in results]
+    if not daily_sizes:
+        print(f"No data available for the last 4 days for file_id: {file_id}. Skipping variance check.")
+        return
+
+    avg_size = sum(daily_sizes) / len(daily_sizes)
+    print(f"4-Day Average Size (Daily Last Entries): {avg_size:.2f} bytes")
+
+    # Calculate variance
+    variance = ((size - avg_size) / avg_size) * 100
+    print(f"Variance: {variance:.2f}%")
+
+    # Flag if variance exceeds threshold (e.g., 20%)
+    threshold = 20
+    if abs(variance) > threshold:
+        print(f"ALERT: File size variance for {file_id} exceeds {threshold}%")
+
+    # Insert the new file entry into BigQuery table
+    table_id = "your_project_id.your_dataset_id.file_size_table"
+    rows_to_insert = [
+        {
+            "file_id": file_id,
+            "size": size,
+            "create_ts": create_ts,
+        }
+    ]
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors:
+        print(f"Failed to insert data: {errors}")
+    else:
+        print(f"Successfully inserted file: {file_id}")
+
+
+
+
 SELECT 
   CONCAT(
     FLOOR(TIMESTAMP_DIFF(TIMESTAMP('2024-12-17 14:30:00'), TIMESTAMP('2024-12-17 12:15:45'), SECOND) / 3600), ':',
