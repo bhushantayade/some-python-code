@@ -1,3 +1,53 @@
+CREATE OR REPLACE VIEW `your_project_id.your_dataset_id.file_size_variance_view` AS
+WITH daily_last_entries AS (
+    SELECT
+        file_id,
+        DATE(create_ts) AS file_date,
+        MAX(create_ts) AS last_entry_ts,
+        ANY_VALUE(size) AS size
+    FROM
+        `your_project_id.your_dataset_id.file_size_table`
+    WHERE
+        create_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 4 DAY)
+    GROUP BY
+        file_id, DATE(create_ts)
+),
+file_variance AS (
+    SELECT
+        current_file.file_id,
+        current_file.size AS latest_size,
+        ARRAY_AGG(last_4_days.size ORDER BY last_4_days.file_date DESC) AS last_4_sizes,
+        COUNT(last_4_days.size) AS available_days,
+        AVG(last_4_days.size) AS avg_size,
+        CASE
+            WHEN AVG(last_4_days.size) > 0 THEN
+                ((current_file.size - AVG(last_4_days.size)) / AVG(last_4_days.size)) * 100
+            ELSE
+                NULL
+        END AS variance_percentage
+    FROM
+        daily_last_entries AS current_file
+    LEFT JOIN
+        daily_last_entries AS last_4_days
+    ON
+        current_file.file_id = last_4_days.file_id
+        AND last_4_days.file_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 4 DAY) AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    GROUP BY
+        current_file.file_id, current_file.size
+)
+SELECT
+    file_id,
+    latest_size,
+    last_4_sizes,
+    available_days,
+    avg_size,
+    variance_percentage
+FROM
+    file_variance;
+
+
+
+
 from google.cloud import bigquery
 import json
 
