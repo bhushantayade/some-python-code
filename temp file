@@ -110,3 +110,78 @@ generated_schema = generate_schema_from_csv(csv_file_path)
 # Validate generated schema with existing schema
 validate_schema(generated_schema, existing_schema)
 
+
+
+######
+WITH date_series AS (
+    -- Generate a series of dates (adjust range as needed)
+    SELECT actual_date
+    FROM UNNEST(GENERATE_DATE_ARRAY(CURRENT_DATE, CURRENT_DATE + INTERVAL 30 DAY)) AS actual_date
+),
+hour_series AS (
+    -- Generate hours (0 to 23)
+    SELECT hour AS actual_hour
+    FROM UNNEST(GENERATE_ARRAY(0, 23)) AS hour
+),
+minute_series AS (
+    -- Generate 10-minute intervals (0, 10, ..., 50)
+    SELECT minute AS actual_minute
+    FROM UNNEST(GENERATE_ARRAY(0, 50, 10)) AS minute
+)
+SELECT
+    mt.file_name,
+    mt.file_name_pattern,
+    CASE
+        WHEN mt.file_name = 'file1' THEN 
+            FORMAT('%s_%s', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date))
+        WHEN mt.file_name = 'file2' THEN 
+            FORMAT('%s_%s_%02d', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date), hs.actual_hour)
+        WHEN mt.file_name = 'file3' THEN 
+            FORMAT('%s_%s_%02d_%02d', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date), hs.actual_hour, ms.actual_minute)
+    END AS expanded_file_name
+FROM master_table mt
+CROSS JOIN date_series ds
+LEFT JOIN hour_series hs ON mt.file_name IN ('file2', 'file3') -- Restrict hours for file2 and file3
+LEFT JOIN minute_series ms ON mt.file_name = 'file3'; -- Restrict minutes only for file3
+
+#####
+WITH RECURSIVE date_series AS (
+    -- Generate a series of dates (adjust range as needed)
+    SELECT 
+        CURRENT_DATE AS actual_date
+    UNION ALL
+    SELECT 
+        actual_date + INTERVAL 1 DAY
+    FROM date_series
+    WHERE actual_date < CURRENT_DATE + INTERVAL 30 DAY -- Change this for a larger range
+),
+hour_series AS (
+    -- Generate hours (0 to 23)
+    SELECT 
+        hour AS actual_hour
+    FROM UNNEST(GENERATE_ARRAY(0, 23)) AS hour
+),
+minute_series AS (
+    -- Generate 10-minute intervals (0, 10, ..., 50)
+    SELECT 
+        minute AS actual_minute
+    FROM UNNEST(GENERATE_ARRAY(0, 50, 10)) AS minute
+)
+SELECT
+    mt.file_name,
+    mt.file_name_pattern,
+    CASE
+        WHEN mt.file_name = 'file1' THEN 
+            FORMAT('%s_%s', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date))
+        WHEN mt.file_name = 'file2' THEN 
+            FORMAT('%s_%s_%02d', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date), hs.actual_hour)
+        WHEN mt.file_name = 'file3' THEN 
+            FORMAT('%s_%s_%02d_%02d', mt.file_name, FORMAT_DATE('%Y%m%d', ds.actual_date), hs.actual_hour, ms.actual_minute)
+    END AS expanded_file_name
+FROM master_table mt
+CROSS JOIN date_series ds
+LEFT JOIN hour_series hs ON mt.file_name IN ('file2', 'file3')
+LEFT JOIN minute_series ms ON mt.file_name = 'file3';
+
+
+
