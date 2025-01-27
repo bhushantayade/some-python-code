@@ -1,3 +1,11 @@
+errors = client.insert_rows_json(table_ref, rows_to_insert)
+    if errors:
+        print(f"Encountered errors while inserting rows: {errors}")
+    else:
+        print("Rows successfully inserted into BigQuery table.")
+
+
+
 from datetime import datetime, timedelta
 
 # Generate date range
