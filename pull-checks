@@ -74,3 +74,92 @@ result = generate_expanded_file_names(master_table, start_date, end_date)
 # Print results
 for entry in result[:10]:  # Print only the first 10 results for brevity
     print(entry)
+
+
+####
+from google.cloud import secretmanager
+
+def access_secret_version(project_id, secret_id, version_id="latest"):
+    """
+    Access a specific version of a secret from GCP Secret Manager.
+
+    :param project_id: GCP project ID
+    :param secret_id: Name of the secret
+    :param version_id: Version of the secret (default is "latest")
+    :return: Secret payload as a string
+    """
+    # Create the Secret Manager client
+    client = secretmanager.SecretManagerServiceClient()
+
+    # Build the resource name of the secret version
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+
+    # Access the secret version
+    response = client.access_secret_version(request={"name": name})
+
+    # Return the secret payload
+    return response.payload.data.decode("UTF-8")
+
+
+# Example usage
+if __name__ == "__main__":
+    # Replace these with your GCP project details
+    PROJECT_ID = "your-gcp-project-id"
+    SECRET_ID = "your-secret-id"
+
+    # Fetch secret
+    try:
+        secret_value = access_secret_version(PROJECT_ID, SECRET_ID)
+        print(f"Secret Value: {secret_value}")
+    except Exception as e:
+        print(f"Failed to access secret: {e}")
+#####
+
+from google.cloud import secretmanager
+
+def fetch_secrets_by_label(project_id, label_key, label_value, version_id="latest"):
+    """
+    Fetch secrets that match a specific label and access their values.
+    
+    :param project_id: GCP project ID
+    :param label_key: Label key to filter secrets
+    :param label_value: Label value to filter secrets
+    :param version_id: Version of the secret (default is "latest")
+    :return: A dictionary of secret names and their corresponding values
+    """
+    client = secretmanager.SecretManagerServiceClient()
+
+    # List secrets in the project
+    parent = f"projects/{project_id}"
+    secrets = client.list_secrets(request={"parent": parent})
+
+    matching_secrets = {}
+
+    for secret in secrets:
+        # Check if the secret has the matching label
+        labels = secret.labels
+        if labels and labels.get(label_key) == label_value:
+            secret_id = secret.name.split("/")[-1]  # Extract secret ID
+            # Access the secret value
+            secret_name = f"{secret.name}/versions/{version_id}"
+            response = client.access_secret_version(request={"name": secret_name})
+            secret_value = response.payload.data.decode("UTF-8")
+            matching_secrets[secret_id] = secret_value
+
+    return matching_secrets
+
+
+# Example usage
+if __name__ == "__main__":
+    # Replace with your GCP project details
+    PROJECT_ID = "your-gcp-project-id"
+    LABEL_KEY = "env"  # Example label key
+    LABEL_VALUE = "prod"  # Example label value
+
+    try:
+        secrets = fetch_secrets_by_label(PROJECT_ID, LABEL_KEY, LABEL_VALUE)
+        for secret_id, secret_value in secrets.items():
+            print(f"Secret ID: {secret_id}, Value: {secret_value}")
+    except Exception as e:
+        print(f"Failed to fetch secrets: {e}")
+
