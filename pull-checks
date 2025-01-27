@@ -1,0 +1,76 @@
+from datetime import datetime, timedelta
+
+# Generate date range
+def generate_date_series(start_date, end_date):
+    current_date = start_date
+    while current_date <= end_date:
+        yield current_date
+        current_date += timedelta(days=1)
+
+# Generate hour range
+def generate_hour_series():
+    return list(range(0, 24))
+
+# Generate 10-minute intervals
+def generate_minute_series():
+    return list(range(0, 60, 10))
+
+# Function to generate expanded file names
+def generate_expanded_file_names(master_table, start_date, end_date):
+    date_series = list(generate_date_series(start_date, end_date))
+    hour_series = generate_hour_series()
+    minute_series = generate_minute_series()
+
+    expanded_file_names = []
+
+    for row in master_table:
+        file_name = row['file_name']
+        file_name_pattern = row.get('file_name_pattern', '')
+
+        for date in date_series:
+            if file_name == 'file1':
+                expanded_file_name = f"{file_name}_{date.strftime('%Y%m%d')}"
+                expanded_file_names.append({
+                    'file_name': file_name,
+                    'file_name_pattern': file_name_pattern,
+                    'expanded_file_name': expanded_file_name
+                })
+
+            elif file_name == 'file2':
+                for hour in hour_series:
+                    expanded_file_name = f"{file_name}_{date.strftime('%Y%m%d')}_{hour:02d}"
+                    expanded_file_names.append({
+                        'file_name': file_name,
+                        'file_name_pattern': file_name_pattern,
+                        'expanded_file_name': expanded_file_name
+                    })
+
+            elif file_name == 'file3':
+                for hour in hour_series:
+                    for minute in minute_series:
+                        expanded_file_name = f"{file_name}_{date.strftime('%Y%m%d')}_{hour:02d}_{minute:02d}"
+                        expanded_file_names.append({
+                            'file_name': file_name,
+                            'file_name_pattern': file_name_pattern,
+                            'expanded_file_name': expanded_file_name
+                        })
+
+    return expanded_file_names
+
+
+# Example master_table data
+master_table = [
+    {'file_name': 'file1', 'file_name_pattern': 'daily'},
+    {'file_name': 'file2', 'file_name_pattern': 'hourly'},
+    {'file_name': 'file3', 'file_name_pattern': 'every_10_minutes'}
+]
+
+# Generate expanded file names
+start_date = datetime.now().date()
+end_date = start_date + timedelta(days=30)
+
+result = generate_expanded_file_names(master_table, start_date, end_date)
+
+# Print results
+for entry in result[:10]:  # Print only the first 10 results for brevity
+    print(entry)
