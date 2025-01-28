@@ -1,3 +1,23 @@
+import threading
+
+# settings.py
+_thread_local = threading.local()
+
+def get_shared_variable():
+    return getattr(_thread_local, "shared_variable", "default_value")
+
+def set_shared_variable(value):
+    _thread_local.shared_variable = value
+
+
+import settings
+
+def entry_point(request):
+    settings.set_shared_variable("request_specific_value")
+    print(f"Shared Variable: {settings.get_shared_variable()}")
+    return "Done"
+#####
+
 errors = client.insert_rows_json(table_ref, rows_to_insert)
     if errors:
         print(f"Encountered errors while inserting rows: {errors}")
