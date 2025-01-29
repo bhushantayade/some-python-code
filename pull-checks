@@ -1,3 +1,15 @@
+CREATE OR REPLACE VIEW `your_project.your_dataset.pending_files_view` AS
+WITH latest_status AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY file_id ORDER BY timestamp_column DESC) AS rn
+    FROM `your_project.your_dataset.file_process`
+)
+SELECT *
+FROM latest_status
+WHERE rn = 1 AND status = 'pending';
+
+
+
 import threading
 
 # settings.py
