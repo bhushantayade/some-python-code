@@ -1,3 +1,46 @@
+import boto3
+from google.cloud import storage
+
+# AWS S3 Configuration
+AWS_ACCESS_KEY = 'your-aws-access-key'
+AWS_SECRET_KEY = 'your-aws-secret-key'
+S3_BUCKET_NAME = 'your-s3-bucket-name'
+S3_FILE_NAME = 'your-s3-file-name'
+
+# GCP Configuration
+GCP_BUCKET_NAME = 'your-gcp-bucket-name'
+GCP_FILE_NAME = 'your-gcp-file-name'  # Destination file name in GCP
+
+def download_from_s3(file_name):
+    """Download a file from S3."""
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+    )
+    s3.download_file(S3_BUCKET_NAME, S3_FILE_NAME, file_name)
+    print(f"File downloaded from S3: {file_name}")
+
+def upload_to_gcp(file_name):
+    """Upload a file to GCP."""
+    client = storage.Client()  # Make sure GOOGLE_APPLICATION_CREDENTIALS is set
+    bucket = client.bucket(GCP_BUCKET_NAME)
+    blob = bucket.blob(GCP_FILE_NAME)
+    blob.upload_from_filename(file_name)
+    print(f"File uploaded to GCP Storage: {GCP_FILE_NAME}")
+
+def main():
+    temp_file = '/tmp/temp_file'  # Temporary file path
+    download_from_s3(temp_file)
+    upload_to_gcp(temp_file)
+
+if __name__ == "__main__":
+    main()
+
+
+#########
+
+
 from google.cloud import storage
 from datetime import datetime
 
