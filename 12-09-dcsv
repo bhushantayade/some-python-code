@@ -1,5 +1,60 @@
 import pandas as pd
 import csv
+from google.cloud import storage
+
+def detect_delimiter_from_blob(blob):
+    """Detects the delimiter from the first line of a GCS blob."""
+    first_line = blob.download_as_text().split("\n", 1)[0]  # Read only the first line
+    return csv.Sniffer().sniff(first_line).delimiter
+
+def check_column_and_count_rows(bucket_name, file_path, column_name, chunk_size=10000):
+    try:
+        # Initialize GCS client
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(file_path)
+
+        if not blob.exists():
+            print("File does not exist in GCS.")
+            return
+        
+        # Detect delimiter
+        delimiter = detect_delimiter_from_blob(blob)
+        print(f"Detected delimiter: '{delimiter}'")
+
+        # Read the first line (header) to check column existence
+        first_line = blob.download_as_text().split("\n", 1)[0]
+        headers = first_line.strip().split(delimiter)
+
+        if column_name not in headers:
+            print(f"Column '{column_name}' not found in the file.")
+            return
+
+        # Read file in chunks
+        row_count = 0
+        with blob.open("rt") as file:  # Read as text stream
+            next(file)  # Skip header
+            chunk_iterator = pd.read_csv(file, sep=delimiter, skiprows=0, chunksize=chunk_size, header=None, low_memory=False)
+
+            for chunk in chunk_iterator:
+                row_count += len(chunk)
+
+        print(f"Column '{column_name}' found. Row count (excluding header): {row_count}")
+
+    except Exception as e:
+        print(f"Error processing file: {e}")
+
+# Example usage
+bucket_name = "your-bucket-name"
+file_path = "your-folder/data.dat"
+column_name = "your_column_name"
+check_column_and_count_rows(bucket_name, file_path, column_name)
+
+
+
+
+import pandas as pd
+import csv
 
 def detect_delimiter(file_path):
     """Detects the delimiter of the given .dat file."""
