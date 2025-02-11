@@ -1,3 +1,15 @@
+import re
+
+text = "Header2025-01-220000006873"  # Example string
+match = re.search(r"\d{8}(\d+)$", text)  # Match digits after ddhhmmss
+
+if match:
+    print(match.group(1))  # Output: 6873
+
+
+
+
+
 import pandas as pd
 import csv
 from google.cloud import storage
