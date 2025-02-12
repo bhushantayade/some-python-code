@@ -1,3 +1,32 @@
+pytest test_main.py
+
+
+import pytest
+from main import validate_file
+
+def test_valid_file():
+    file_content = '{"name": "John Doe", "age": 30}'
+    result = validate_file(file_content)
+    assert result == {"status": "success", "message": "File is valid"}
+
+def test_invalid_json():
+    file_content = '{"name": "John Doe", "age": 30'  # Missing closing brace
+    result = validate_file(file_content)
+    assert result == {"status": "error", "message": "Invalid JSON format"}
+
+def test_invalid_name():
+    file_content = '{"name": 123, "age": 30}'
+    result = validate_file(file_content)
+    assert result == {"status": "error", "message": "Invalid name format"}
+
+def test_invalid_age():
+    file_content = '{"name": "John Doe", "age": "thirty"}'
+    result = validate_file(file_content)
+    assert result == {"status": "error", "message": "Invalid age format"}
+
+
+
+#######
 import re
 
 text = "Header2025-01-220000006873"  # Example string
