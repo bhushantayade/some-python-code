@@ -1,3 +1,19 @@
+Subject: Reminder: Your File Will Be Deleted in 24 Hours
+
+Dear [User's Name],
+
+We hope you’re doing well. This is a friendly reminder that your file [File Name] stored in [Bucket Name] will be automatically deleted in 24 hours as part of our retention policy.
+
+If you need to retain this file, please take the necessary action before it is permanently removed.
+
+For any questions or assistance, feel free to reach out to us.
+
+Best regards,
+[Your Name / Team Name]
+
+
+
+
 github.com/kss7/Pytest-Automation
 ###
 pytest test_main.py
