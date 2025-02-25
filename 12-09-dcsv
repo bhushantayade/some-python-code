@@ -1,3 +1,10 @@
+SELECT 
+    file_name,
+    REGEXP_EXTRACT(file_name, r'^(?:[^_]+_)?([^_.]+)(?:_[^_.]+)?\.[^.]+$') AS base_file_name
+FROM file_table;
+
+
+
 CREATE OR REPLACE VIEW file_occurrence_view AS
 WITH Extracted_Files AS (
     SELECT 
