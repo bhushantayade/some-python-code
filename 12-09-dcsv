@@ -1,3 +1,69 @@
+CREATE OR REPLACE VIEW file_occurrence_view AS
+WITH Extracted_Files AS (
+    SELECT 
+        bucket_name,
+        folder_name,
+        file_name,
+        create_time,
+        REGEXP_EXTRACT(file_name, r'^[^-]+-(.+)-[^-]+\..+$') AS base_file_name 
+    FROM file_table
+),
+File_Difference AS (
+    SELECT 
+        ef.bucket_name,
+        ef.folder_name,
+        ef.file_name,
+        ef.create_time,
+        ef.base_file_name,
+        LAG(ef.create_time) OVER (
+            PARTITION BY ef.bucket_name, ef.folder_name, ef.base_file_name 
+            ORDER BY ef.create_time
+        ) AS previous_create_time
+    FROM Extracted_Files ef
+),
+Final_Calculation AS (
+    SELECT 
+        fd.bucket_name,
+        fd.folder_name,
+        fd.file_name,
+        fd.create_time,
+        fd.base_file_name,
+        fd.previous_create_time,
+        f.frequency,
+        -- Convert frequency to seconds for calculation
+        CASE 
+            WHEN f.frequency = 'daily' THEN 86400  -- 24 hours = 86400 seconds
+            WHEN f.frequency = 'hourly' THEN 3600  -- 1 hour = 3600 seconds
+            WHEN f.frequency = 'every 10 min' THEN 600  -- 10 min = 600 seconds
+            ELSE NULL
+        END AS expected_time_diff_seconds,
+        -- Actual time difference
+        TIMESTAMP_DIFF(fd.create_time, fd.previous_create_time, SECOND) AS actual_time_diff_seconds,
+        -- Determine if file is late
+        CASE 
+            WHEN fd.previous_create_time IS NOT NULL 
+                 AND TIMESTAMP_DIFF(fd.create_time, fd.previous_create_time, SECOND) > 
+                     CASE 
+                         WHEN f.frequency = 'daily' THEN 86400
+                         WHEN f.frequency = 'hourly' THEN 3600
+                         WHEN f.frequency = 'every 10 min' THEN 600
+                         ELSE NULL
+                     END 
+            THEN 'Late'
+            ELSE 'On Time'
+        END AS status
+    FROM File_Difference fd
+    LEFT JOIN frequency_table f 
+    ON fd.bucket_name = f.bucket_name 
+    AND fd.folder_name = f.folder_name
+)
+SELECT * FROM Final_Calculation;
+
+
+
+
+
+
 Subject: Reminder: Your File Will Be Deleted in 24 Hours
 
 Dear [User's Name],
