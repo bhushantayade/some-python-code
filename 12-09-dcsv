@@ -1,5 +1,26 @@
 SELECT 
     file_name,
+    REGEXP_EXTRACT(file_name, r'^(?:\d+_)?([a-zA-Z_]+)(?:_\d+.*)?\.[^.]+$') AS base_file_name
+FROM file_table.
+
+SELECT 
+    file_name,
+    REGEXP_EXTRACT(file_name, r'^(?:\d+_)?([a-zA-Z_]+)(?:_\d+.*)?\.[^.]+$') AS base_file_name
+FROM file_table;
+
+
+
+
+SELECT 
+    file_name,
+    REGEXP_EXTRACT(file_name, r'^(?:\d+_)?([a-zA-Z0-9_]+?)(?:_\d+)?\.[^.]+$') AS base_file_name
+FROM file_table;
+
+
+
+
+SELECT 
+    file_name,
     REGEXP_EXTRACT(file_name, r'^(?:\d+_)?([a-zA-Z0-9]+(?:_[a-zA-Z0-9]+)*)(?:_\d+)?\.[^.]+$') AS base_file_name
 FROM file_table;
 
