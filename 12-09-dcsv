@@ -1,3 +1,35 @@
+import time
+from google.cloud import storage
+import hashlib
+
+def compute_large_file_sha256(bucket_name, blob_name, chunk_size=4 * 1024 * 1024):
+    """Computes SHA-256 hash for a large file stored in Google Cloud Storage."""
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+
+    sha256_hash = hashlib.sha256()
+    
+    start_time = time.time()  # Start timing
+    
+    # Stream the file in chunks
+    with blob.open("rb") as file:
+        for chunk in iter(lambda: file.read(chunk_size), b""):
+            sha256_hash.update(chunk)
+
+    end_time = time.time()  # End timing
+
+    print(f"Time taken: {end_time - start_time:.2f} seconds")
+    return sha256_hash.hexdigest()
+
+# Example usage
+bucket_name = "your-bucket-name"
+blob_name = "your-large-file"
+hash_value = compute_large_file_sha256(bucket_name, blob_name)
+print("SHA-256 Hash:", hash_value)
+
+
+
 SELECT 
     file_name,
     REGEXP_EXTRACT(file_name, r'^(?:\d+_)?([a-zA-Z0-9_]+?)(?:_\d{6,}.*)?\.[^.]+$') AS base_file_name
