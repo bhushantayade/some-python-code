@@ -1,4 +1,56 @@
-#####error log code######
+#
+resource.type="gcs_bucket"
+protoPayload.methodName="storage.objects.create"
+protoPayload.status.message:"Unavailable"
+severity=ERROR
+###
+CREATE OR REPLACE VIEW `your_project.error_logs.recent_gcs_upload_failures` AS
+SELECT
+  timestamp,
+  protoPayload.methodName AS operation,
+  protoPayload.resourceName AS resource,
+  protoPayload.status.message AS error_message,
+  severity,
+  JSON_VALUE(protoPayload.metadata, '$.bucket') AS bucket_name,
+  JSON_VALUE(protoPayload.metadata, '$.object') AS object_name
+FROM
+  `your_project.your_log_dataset.cloudaudit_googleapis_com_data_access_*`
+WHERE
+  protoPayload.methodName LIKE 'storage.objects.%'
+  AND severity = 'ERROR'
+  AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+ORDER BY
+  timestamp DESC;
+
+22###
+CREATE OR REPLACE VIEW `your_project.error_logs.realtime_gcs_failures` AS
+WITH latest_logs AS (
+  SELECT *
+  FROM `your_project.error_logs.gcs_upload_errors`
+  WHERE TIMESTAMP(timestamp) >= TIMESTAMP_SUB(
+    CURRENT_TIMESTAMP(), 
+    INTERVAL 15 MINUTE
+  )
+)
+SELECT
+  TIMESTAMP(timestamp) AS error_time,
+  operation,
+  bucket_name,
+  file_name,
+  error_type,
+  error_message,
+  attempt_number,
+  custom_metadata,
+  CASE
+    WHEN error_type = 'ServiceUnavailable' THEN 'RETRYABLE'
+    ELSE 'CRITICAL'
+  END AS error_category
+FROM latest_logs
+ORDER BY error_time DESC;
+
+
+
+####error log code######
 import datetime
 import time
 import traceback
