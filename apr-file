@@ -1,0 +1,233 @@
+CREATE OR REPLACE VIEW `your_project.analytics.unified_service_incidents` AS
+WITH 
+-- Extract BigQuery incidents
+bq_incidents AS (
+  SELECT
+    timestamp,
+    'BigQuery' AS service,
+    severity,
+    jsonPayload.message AS error_message,
+    jsonPayload.job_id AS resource_id,
+    TO_JSON_STRING(jsonPayload) AS full_details
+  FROM
+    `your_project.logs.bigquery_logs`
+  WHERE
+    severity IN ('ERROR', 'WARNING', 'CRITICAL')
+),
+
+-- Extract Cloud Function incidents
+cf_incidents AS (
+  SELECT
+    timestamp,
+    'CloudFunction' AS service,
+    severity,
+    jsonPayload.message AS error_message,
+    resource.labels.function_name AS resource_id,
+    TO_JSON_STRING(jsonPayload) AS full_details
+  FROM
+    `your_project.logs.cloudfunction_logs`
+  WHERE
+    severity IN ('ERROR', 'WARNING', 'CRITICAL')
+),
+
+-- Extract Cloud Storage incidents
+cs_incidents AS (
+  SELECT
+    timestamp,
+    'CloudStorage' AS service,
+    severity,
+    jsonPayload.message AS error_message,
+    resource.labels.bucket_name AS resource_id,
+    TO_JSON_STRING(jsonPayload) AS full_details
+  FROM
+    `your_project.logs.storage_logs`
+  WHERE
+    severity IN ('ERROR', 'WARNING', 'CRITICAL')
+),
+
+-- Extract Pub/Sub incidents
+ps_incidents AS (
+  SELECT
+    timestamp,
+    'PubSub' AS service,
+    severity,
+    jsonPayload.message AS error_message,
+    resource.labels.subscription_id AS resource_id,
+    TO_JSON_STRING(jsonPayload) AS full_details
+  FROM
+    `your_project.logs.pubsub_logs`
+  WHERE
+    severity IN ('ERROR', 'WARNING', 'CRITICAL')
+),
+
+-- Combine all incidents
+all_incidents AS (
+  SELECT * FROM bq_incidents
+  UNION ALL
+  SELECT * FROM cf_incidents
+  UNION ALL
+  SELECT * FROM cs_incidents
+  UNION ALL
+  SELECT * FROM ps_incidents
+),
+
+-- Daily service aggregates
+daily_service_stats AS (
+  SELECT
+    DATE(timestamp) AS incident_date,
+    service,
+    severity,
+    COUNT(*) AS incident_count,
+    ARRAY_AGG(
+      STRUCT(
+        error_message,
+        resource_id,
+        full_details
+      )
+      ORDER BY timestamp DESC
+      LIMIT 5
+    ) AS sample_incidents
+  FROM
+    all_incidents
+  GROUP BY
+    incident_date, service, severity
+),
+
+-- Cross-service correlations
+service_correlations AS (
+  SELECT
+    a.incident_date,
+    a.service AS primary_service,
+    b.service AS correlated_service,
+    COUNT(DISTINCT a.error_message) AS shared_error_types,
+    COUNT(*) AS co_occurrence_count
+  FROM
+    all_incidents a
+  JOIN
+    all_incidents b
+  ON
+    a.incident_date = b.incident_date
+    AND a.service < b.service -- Avoid duplicate pairs
+    AND a.error_message = b.error_message -- Same error type
+  GROUP BY
+    a.incident_date, primary_service, correlated_service
+)
+
+-- Final unified view
+SELECT
+  ds.incident_date,
+  ds.service,
+  ds.severity,
+  ds.incident_count,
+  ds.sample_incidents,
+  -- Service metrics
+  SUM(ds.incident_count) OVER(
+    PARTITION BY ds.incident_date, ds.service
+  ) AS daily_service_total,
+  -- Cross-service insights
+  ARRAY(
+    SELECT AS STRUCT
+      correlated_service,
+      shared_error_types,
+      co_occurrence_count
+    FROM
+      service_correlations sc
+    WHERE
+      sc.incident_date = ds.incident_date
+      AND sc.primary_service = ds.service
+    ORDER BY
+      co_occurrence_count DESC
+    LIMIT 3
+  ) AS correlated_services,
+  -- Trend analysis
+  AVG(ds.incident_count) OVER(
+    PARTITION BY ds.service, ds.severity
+    ORDER BY ds.incident_date
+    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) AS weekly_moving_avg,
+  -- Percentage of daily total
+  ROUND(100 * ds.incident_count / NULLIF(SUM(ds.incident_count) OVER(
+    PARTITION BY ds.incident_date
+  ), 0), 2) AS daily_percentage
+FROM
+  daily_service_stats ds
+ORDER BY
+  ds.incident_date DESC,
+  daily_service_total DESC,
+  ds.severity DESC;
+
+
+###DashboardQuery####
+
+SELECT
+  incident_date,
+  service,
+  SUM(incident_count) AS total_incidents,
+  SUM(CASE WHEN severity = 'ERROR' THEN incident_count ELSE 0 END) AS errors,
+  SUM(CASE WHEN severity = 'WARNING' THEN incident_count ELSE 0 END) AS warnings,
+  ARRAY_LENGTH(correlated_services) AS correlated_service_count
+FROM
+  `your_project.analytics.unified_service_incidents`
+GROUP BY
+  incident_date, service
+ORDER BY
+  incident_date DESC, total_incidents DESC;
+
+
+####2
+Service Correlation Analysis
+
+SELECT
+  incident_date,
+  primary_service,
+  correlated_service,
+  shared_error_types,
+  co_occurrence_count
+FROM
+  `your_project.analytics.unified_service_incidents`,
+  UNNEST(correlated_services)
+WHERE
+  co_occurrence_count > 1
+ORDER BY
+  incident_date DESC,
+  co_occurrence_count DESC;
+3. Error Message Frequency Across Services
+
+######
+WITH error_patterns AS (
+  SELECT
+    TRIM(REGEXP_EXTRACT(error_message, r'([A-Za-z0-9_]+Exception|[A-Z][A-Za-z]+Error)')) AS error_type,
+    service,
+    COUNT(*) AS occurrence_count
+  FROM
+    `your_project.analytics.unified_service_incidents`,
+    UNNEST(sample_incidents)
+  WHERE
+    error_message IS NOT NULL
+  GROUP BY
+    error_type, service
+)
+
+SELECT
+  error_type,
+  ARRAY_AGG(STRUCT(service, occurrence_count)) AS service_distribution,
+  SUM(occurrence_count) AS total_occurrences
+FROM
+  error_patterns
+GROUP BY
+  error_type
+HAVING
+  total_occurrences > 3
+ORDER BY
+  total_occurrences DESC;
+Materialized View for Performance
+
+#####
+CREATE MATERIALIZED VIEW `your_project.analytics.unified_incidents_daily_mv`
+PARTITION BY DATE(incident_date)
+CLUSTER BY service, severity
+OPTIONS(
+  enable_refresh = true,
+  refresh_interval_minutes = 60
+) AS
+SELECT * FROM `your_project.analytics.unified_service_incidents`;
