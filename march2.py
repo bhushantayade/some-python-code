@@ -1,3 +1,57 @@
+from google.cloud import storage
+import time
+from datetime import datetime, timedelta
+
+def check_blob_exists_with_retry(bucket_name, blob_name, max_duration=240):
+    """Check if a blob exists in GCS with retry logic for up to 4 minutes (default).
+    
+    Args:
+        bucket_name (str): Name of the GCS bucket
+        blob_name (str): Name of the blob/file to check
+        max_duration (int): Maximum duration in seconds (default 240 for 4 minutes)
+    
+    Returns:
+        bool: True if blob exists, False if not found after retries
+    """
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    
+    start_time = datetime.now()
+    attempt = 0
+    
+    while (datetime.now() - start_time) < timedelta(seconds=max_duration):
+        attempt += 1
+        try:
+            exists = blob.exists()
+            if exists:
+                print(f"Blob found on attempt {attempt}")
+                return True
+            
+            # Exponential backoff with jitter
+            sleep_time = min(2 ** attempt + random.uniform(0, 1), 15)  # Max 15 seconds
+            time.sleep(sleep_time)
+            
+        except Exception as e:
+            print(f"Attempt {attempt} failed with error: {str(e)}")
+            time.sleep(5)  # Wait 5 seconds on error
+    
+    print(f"Blob not found after {max_duration} seconds")
+    return False
+
+# Example usage
+if check_blob_exists_with_retry("my-bucket", "path/to/my-file.txt"):
+    print("File exists!")
+else:
+    print("File does not exist after retries")
+
+
+
+
+
+
+
+
 #
 resource.type="gcs_bucket"
 protoPayload.methodName="storage.objects.create"
