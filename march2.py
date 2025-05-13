@@ -1,3 +1,21 @@
+def is_avro_file_hybrid(file_path):
+    AVRO_MAGIC = b'Obj\x01'
+    try:
+        with open(file_path, 'rb') as f:
+            if f.read(4) != AVRO_MAGIC:
+                return False
+    except (IOError, OSError):
+        return False
+    
+    try:
+        with open(file_path, 'rb') as f:
+            fastavro.schema.parse_schema(f)
+            return True
+    except (ValueError, fastavro.schema.SchemaParseException):
+        return False
+
+
+######
 from google.cloud import storage
 import time
 from datetime import datetime, timedelta
