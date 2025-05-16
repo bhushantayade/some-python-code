@@ -1,3 +1,48 @@
+import concurrent.futures
+import time
+
+def process_dataset_1(data):
+    # Your processing logic for dataset 1
+    time.sleep(30)  # Simulate processing time
+    return "Dataset 1 processed"
+
+def process_dataset_2(data):
+    # Your processing logic for dataset 2
+    time.sleep(45)  # Simulate processing time
+    return "Dataset 2 processed"
+
+def process_datasets_parallel(request):
+    dataset1 = request.get_json().get('dataset1', {})
+    dataset2 = request.get_json().get('dataset2', {})
+    
+    start_time = time.time()
+    
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Submit both processing tasks
+        future1 = executor.submit(process_dataset_1, dataset1)
+        future2 = executor.submit(process_dataset_2, dataset2)
+        
+        # Wait for both to complete with timeout
+        try:
+            results = []
+            for future in concurrent.futures.as_completed([future1, future2], timeout=480):  # 8 min timeout
+                results.append(future.result())
+            
+            return {
+                'status': 'success',
+                'results': results,
+                'processing_time': time.time() - start_time
+            }
+            
+        except concurrent.futures.TimeoutError:
+            return {
+                'status': 'error',
+                'message': 'Processing timed out after 8 minutes'
+            }, 500
+
+
+
+######
 def is_avro_file_hybrid(file_path):
     AVRO_MAGIC = b'Obj\x01'
     try:
