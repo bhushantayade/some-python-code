@@ -1,3 +1,72 @@
+from collections import defaultdict
+
+def group_data_by_keys(data_list):
+    """Group data by email_id and bucket_name"""
+    grouped = defaultdict(list)
+    
+    for item in data_list:
+        key = (item['email_id'], item['bucket_name'])
+        grouped[key].append(item)
+    
+    return grouped
+
+# Example usage:
+data = [
+    {'email_id': 'a@test.com', 'bucket_name': 'b1', 'value': 1},
+    {'email_id': 'a@test.com', 'bucket_name': 'b1', 'value': 2},
+    {'email_id': 'b@test.com', 'bucket_name': 'b2', 'value': 3}
+]
+
+grouped_data = group_data_by_keys(data)
+
+# Access data for specific email+bucket combination
+a_b1_data = grouped_data[('a@test.com', 'b1')]
+
+
+import pandas as pd
+
+def process_with_pandas(data_list):
+    """Process using pandas for efficient grouping"""
+    df = pd.DataFrame(data_list)
+    
+    # Create grouped datasets
+    grouped = {
+        (email, bucket): group.to_dict('records')
+        for (email, bucket), group in df.groupby(['email_id', 'bucket_name'])
+    }
+    
+    return grouped
+
+# Example usage:
+grouped_data = process_with_pandas(data)
+
+
+from concurrent.futures import ThreadPoolExecutor
+import itertools
+
+def parallel_grouping(data_list, chunk_size=1000):
+    """Process large datasets in parallel chunks"""
+    def process_chunk(chunk):
+        return group_data_by_keys(chunk)
+    
+    # Split data into chunks
+    chunks = [data_list[i:i + chunk_size] 
+             for i in range(0, len(data_list), chunk_size)]
+    
+    # Process in parallel
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(process_chunk, chunks))
+    
+    # Merge results
+    final_result = defaultdict(list)
+    for result in results:
+        for key, items in result.items():
+            final_result[key].extend(items)
+    
+    return final_result
+
+
+######
 import concurrent.futures
 import time
 
