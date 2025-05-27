@@ -1,3 +1,104 @@
+from datetime import datetime
+
+def resolve_date_path(file_path, target_date=None):
+    """
+    Enhanced version that properly handles YYYY/YYYYMM/YYYYMMDD formats
+    """
+    if target_date is None:
+        target_date = datetime.now()
+    
+    # Ordered from most specific to least specific
+    format_replacements = [
+        ('YYYYMMDD', target_date.strftime('%Y%m%d')),
+        ('YYYYMM', target_date.strftime('%Y%m')),
+        ('YYYY', target_date.strftime('%Y')),
+        ('YY', target_date.strftime('%y')),
+        ('MM', target_date.strftime('%m')),
+        ('DD', target_date.strftime('%d'))
+    ]
+    
+    for placeholder, replacement in format_replacements:
+        file_path = file_path.replace(placeholder, replacement)
+    
+    return file_path
+
+222222.####
+
+from datetime import datetime
+import pytest
+
+# Fixed test date for consistent results (2023-11-15)
+TEST_DATE = datetime(2023, 11, 15)
+
+test_cases = [
+    # Standard formats
+    ("data/YYYY/file.json", "data/2023/file.json"),
+    ("logs/YYYYMM/app.log", "logs/202311/app.log"),
+    ("exports/YYYYMMDD/data.csv", "exports/20231115/data.csv"),
+    ("archive/YYYY/MM/DD/backup.zip", "archive/2023/11/15/backup.zip"),
+    
+    # Mixed formats
+    ("reports/YYYY-MM-DD/daily.pdf", "reports/2023-11-15/daily.pdf"),
+    ("temp/YYMMDD/today.dat", "temp/231115/today.dat"),
+    ("user/YYYY/MMDD/profile.json", "user/2023/1115/profile.json"),
+    
+    # Edge cases
+    ("YYYYMMDD_filename.txt", "20231115_filename.txt"),
+    ("no_date_here.txt", "no_date_here.txt"),
+    ("MMDDYY/test.xyz", "111523/test.xyz"),
+    ("prefix_YYYY_suffix.dat", "prefix_2023_suffix.dat"),
+    
+    # Multiple occurrences
+    ("YYYY/YYYY/YYYY", "2023/2023/2023"),
+    ("YYYYMM/YYYYMM/YYYYMM", "202311/202311/202311"),
+    
+    # Different delimiters
+    ("YYYY.MM.DD_log.txt", "2023.11.15_log.txt"),
+    ("YYYY_MM_DD_config.ini", "2023_11_15_config.ini"),
+    
+    # Partial matches (shouldn't replace)
+    ("MY_YYYY_DATA", "MY_2023_DATA"),
+    ("PLACEHOLDER_MM", "PLACEHOLDER_11"),
+    
+    # Case sensitivity
+    ("yyyy/mm/dd/file.txt", "yyyy/11/15/file.txt"),  # Only upper case handled
+    ("yyyymmdd_file.txt", "yyyymmdd_file.txt"),      # Not matched
+]
+
+@pytest.mark.parametrize("input_path,expected", test_cases)
+def test_resolve_date_path(input_path, expected):
+    assert resolve_date_path(input_path, TEST_DATE) == expected
+
+# Special format test
+def test_special_format_combinations():
+    assert resolve_date_path("A/YYYY/B/YYYYMM/C/YYYYMMDD/D", TEST_DATE) == "A/2023/B/202311/C/20231115/D"
+    assert resolve_date_path("X_YY_MM_DD_Y", TEST_DATE) == "X_23_11_15_Y"
+    assert resolve_date_path("1YYYY2MM3DD4", TEST_DATE) == "12023112154"
+
+# Real-world example test
+def test_real_world_path():
+    path = "active/track_order/YYYY/YYYYMM/YYYYMMDD/file.json"
+    expected = "active/track_order/2023/202311/20231115/file.json"
+    assert resolve_date_path(path, TEST_DATE) == expected
+
+# Current date test
+def test_current_date_default():
+    today = datetime.now()
+    path = "logs/YYYY/MM/DD.log"
+    expected = f"logs/{today.year}/{today.month:02d}/{today.day:02d}.log"
+    assert resolve_date_path(path) == expected
+
+# Run the tests (if executed directly)
+if __name__ == "__main__":
+    import sys
+    pytest.main(sys.argv)
+
+
+
+
+
+######
+
 SELECT *
 FROM `your_project.your_dataset.your_table`
 WHERE timestamp_column >= TIMESTAMP_SUB(TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), HOUR), INTERVAL 1 HOUR)
