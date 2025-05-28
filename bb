@@ -1,3 +1,57 @@
+SELECT
+  original_path,
+  REGEXP_REPLACE(
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        original_path,
+        'YYYY', FORMAT_DATE('%Y', CURRENT_DATE())
+      ),
+      'YYYYMM', FORMAT_DATE('%Y%m', CURRENT_DATE())
+    ),
+    'YYMMDD', FORMAT_DATE('%y%m%d', CURRENT_DATE())
+  ) AS resolved_path
+FROM your_table
+
+2.
+DECLARE target_date DATE DEFAULT DATE('2023-11-15'); -- Can be parameterized
+
+SELECT
+  original_path,
+  REGEXP_REPLACE(
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        original_path,
+        'YYYY', FORMAT_DATE('%Y', target_date)
+      ),
+      'YYYYMM', FORMAT_DATE('%Y%m', target_date)
+    ),
+    'YYMMDD', FORMAT_DATE('%y%m%d', target_date)
+  ) AS resolved_path
+FROM your_table
+
+3.
+WITH sample_data AS (
+  SELECT 'active/track_order/YYYY/YYYYMM/YYMMDD/file.json' AS original_path UNION ALL
+  SELECT 'archive/YYYYMM/reports.csv' UNION ALL
+  SELECT 'exports/YYMMDD/data.txt' UNION ALL
+  SELECT 'static/file.txt' -- No date placeholders
+)
+
+SELECT
+  original_path,
+  REGEXP_REPLACE(
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        original_path,
+        'YYYY', FORMAT_DATE('%Y', CURRENT_DATE())
+      ),
+      'YYYYMM', FORMAT_DATE('%Y%m', CURRENT_DATE())
+    ),
+    'YYMMDD', FORMAT_DATE('%y%m%d', CURRENT_DATE())
+  ) AS resolved_path
+FROM sample_data
+
+####
 from datetime import datetime
 
 def resolve_date_path(file_path, target_date=None):
