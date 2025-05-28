@@ -1,3 +1,33 @@
+WITH sample_data AS (
+  SELECT 'active/track_order/2023/202311/231115/file.json' AS formatted_path UNION ALL
+  SELECT 'archive/202311/reports.csv' UNION ALL
+  SELECT 'exports/231115/data.txt' UNION ALL
+  SELECT 'static/file.txt' -- No dates to reverse
+)
+
+SELECT
+  formatted_path,
+  REGEXP_REPLACE(
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        formatted_path,
+        r'(\d{4})(\d{2})(\d{2})', -- YYYYMMDD pattern
+        'YYYYMMDD'
+      ),
+      r'(\d{4})(\d{2})', -- YYYYMM pattern
+      'YYYYMM'
+    ),
+    r'\b\d{4}\b', -- YYYY pattern (whole word)
+    'YYYY'
+  ) AS original_pattern,
+  -- Also extract the actual dates if needed
+  REGEXP_EXTRACT(formatted_path, r'(\d{4})[/_-](\d{2})[/_-](\d{2})') AS extracted_date,
+  REGEXP_EXTRACT(formatted_path, r'(\d{4})(\d{2})') AS extracted_year_month,
+  REGEXP_EXTRACT(formatted_path, r'\b(\d{4})\b') AS extracted_year
+FROM sample_data
+
+
+###
 SELECT
   original_path,
   REGEXP_REPLACE(
