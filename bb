@@ -1,3 +1,39 @@
+WITH paths AS (
+  SELECT 
+    'active/track_order/2025/202505/20250530' AS f,
+    'active/track_order/YYYY/YYYYMM/YYYYMMDD' AS f2
+)
+
+SELECT
+  f,
+  f2,
+  -- Check if pattern matches and reconstruct f2 with dates from f
+  CASE
+    WHEN REGEXP_CONTAINS(f, r'active/track_order/\d{4}/\d{6}/\d{8}')
+    THEN REGEXP_REPLACE(
+      f2,
+      r'(YYYY)(?:MM)?(?:DD)?',
+      (
+        SELECT STRING_AGG(
+          CASE 
+            WHEN part = 'YYYY' THEN REGEXP_EXTRACT(f, r'/(\d{4})/')
+            WHEN part = 'YYYYMM' THEN REGEXP_EXTRACT(f, r'/(\d{6})/')
+            WHEN part = 'YYYYMMDD' THEN REGEXP_EXTRACT(f, r'/(\d{8})(?:/|$)')
+            ELSE part
+          END,
+          '/'
+        )
+        FROM UNNEST(REGEXP_EXTRACT_ALL(f2, r'(YYYY(?:MM(?:DD)?)|([^/]+)')) AS part
+      )
+    )
+    ELSE f2
+  END AS reconstructed_f2,
+  
+  -- Boolean indicating if patterns matched
+  REGEXP_CONTAINS(f, r'active/track_order/\d{4}/\d{6}/\d{8}') AS is_match
+FROM paths
+
+####
 WITH sample_data AS (
   SELECT 'active/track_order/2023/202311/231115/file.json' AS formatted_path UNION ALL
   SELECT 'archive/202311/reports.csv' UNION ALL
