@@ -1,324 +1,38 @@
-CREATE OR REPLACE VIEW `your_project_id.your_dataset_id.file_size_variance_view` AS
-WITH daily_last_entries AS (
-    SELECT
-        file_id,
-        DATE(create_ts) AS file_date,
-        MAX(create_ts) AS last_entry_ts,
-        ANY_VALUE(size) AS size
-    FROM
-        `your_project_id.your_dataset_id.file_size_table`
-    WHERE
-        create_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 4 DAY)
-    GROUP BY
-        file_id, DATE(create_ts)
+from google.cloud import bigquery
+
+client = bigquery.Client()
+
+query = """
+WITH extracted_files AS (
+  SELECT 
+    file_name,
+    file_size,
+    create_ts,
+    REGEXP_EXTRACT(file_name, r'^(.*)_\\d+_\\d+$') AS base_name
+  FROM `your_project.your_dataset.file_size_table`
+  WHERE REGEXP_CONTAINS(file_name, r'^category_distribute_\\d+_\\d+$')
 ),
-file_variance AS (
-    SELECT
-        current_file.file_id,
-        current_file.size AS latest_size,
-        ARRAY_AGG(last_4_days.size ORDER BY last_4_days.file_date DESC) AS last_4_sizes,
-        COUNT(last_4_days.size) AS available_days,
-        AVG(last_4_days.size) AS avg_size,
-        CASE
-            WHEN AVG(last_4_days.size) > 0 THEN
-                ((current_file.size - AVG(last_4_days.size)) / AVG(last_4_days.size)) * 100
-            ELSE
-                NULL
-        END AS variance_percentage
-    FROM
-        daily_last_entries AS current_file
-    LEFT JOIN
-        daily_last_entries AS last_4_days
-    ON
-        current_file.file_id = last_4_days.file_id
-        AND last_4_days.file_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 4 DAY) AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
-    GROUP BY
-        current_file.file_id, current_file.size
+latest_files AS (
+  SELECT 
+    base_name,
+    MAX(create_ts) AS latest_create_ts
+  FROM extracted_files
+  GROUP BY base_name
 )
-SELECT
-    file_id,
-    latest_size,
-    last_4_sizes,
-    available_days,
-    avg_size,
-    variance_percentage
-FROM
-    file_variance;
-
-
-
-
-from google.cloud import bigquery
-import json
-
-# Initialize BigQuery client
-client = bigquery.Client()
-
-def file_size_variance_check(event, context):
-    """
-    Cloud Function to calculate file size variance based on the last entry for each of the last 4 days.
-    Triggered by new file metadata.
-    """
-    # Parse event data (assuming Pub/Sub message contains file metadata)
-    data = json.loads(event['data'].decode('utf-8'))
-    file_id = data.get('file_id')
-    size = int(data.get('size'))  # New file size in bytes
-    create_ts = data.get('create_ts')  # File creation timestamp (ISO 8601 format)
-
-    if not file_id or not size or not create_ts:
-        print("Invalid input data.")
-        return
-
-    print(f"Processing file: {file_id}, Size: {size} bytes, Timestamp: {create_ts}")
-
-    # Query to get the last entry for each day over the last 4 days
-    query = f"""
-        SELECT MAX(create_ts) AS last_entry_ts, size
-        FROM `your_project_id.your_dataset_id.file_size_table`
-        WHERE file_id = '{file_id}' 
-          AND create_ts BETWEEN TIMESTAMP_SUB(TIMESTAMP('{create_ts}'), INTERVAL 4 DAY)
-                            AND TIMESTAMP('{create_ts}')
-        GROUP BY DATE(create_ts), size
-    """
-    query_job = client.query(query)
-    results = query_job.result()
-
-    # Calculate the average size for the last 4 days
-    daily_sizes = [row.size for row in results]
-    if not daily_sizes:
-        print(f"No data available for the last 4 days for file_id: {file_id}. Skipping variance check.")
-        return
-
-    avg_size = sum(daily_sizes) / len(daily_sizes)
-    print(f"4-Day Average Size (Daily Last Entries): {avg_size:.2f} bytes")
-
-    # Calculate variance
-    variance = ((size - avg_size) / avg_size) * 100
-    print(f"Variance: {variance:.2f}%")
-
-    # Flag if variance exceeds threshold (e.g., 20%)
-    threshold = 20
-    if abs(variance) > threshold:
-        print(f"ALERT: File size variance for {file_id} exceeds {threshold}%")
-
-    # Insert the new file entry into BigQuery table
-    table_id = "your_project_id.your_dataset_id.file_size_table"
-    rows_to_insert = [
-        {
-            "file_id": file_id,
-            "size": size,
-            "create_ts": create_ts,
-        }
-    ]
-    errors = client.insert_rows_json(table_id, rows_to_insert)
-    if errors:
-        print(f"Failed to insert data: {errors}")
-    else:
-        print(f"Successfully inserted file: {file_id}")
-
-
-
-
 SELECT 
-  CONCAT(
-    FLOOR(TIMESTAMP_DIFF(TIMESTAMP('2024-12-17 14:30:00'), TIMESTAMP('2024-12-17 12:15:45'), SECOND) / 3600), ':',
-    LPAD(FLOOR(MOD(TIMESTAMP_DIFF(TIMESTAMP('2024-12-17 14:30:00'), TIMESTAMP('2024-12-17 12:15:45'), SECOND) / 60, 60)), 2, '0'), ':',
-    LPAD(MOD(TIMESTAMP_DIFF(TIMESTAMP('2024-12-17 14:30:00'), TIMESTAMP('2024-12-17 12:15:45'), SECOND), 60), 2, '0')
-  ) AS diff_time
+  f.file_name,
+  f.file_size,
+  f.create_ts,
+  f.base_name
+FROM extracted_files f
+JOIN latest_files l
+  ON f.base_name = l.base_name AND f.create_ts = l.latest_create_ts
+ORDER BY f.create_ts DESC
+"""
 
+query_job = client.query(query)
+results = query_job.result()
 
-Solution Overview
-BigQuery Table Structure:
-file_size_table schema:
-file_id (STRING): Unique identifier for each file.
-size (INTEGER): File size in bytes.
-create_ts (TIMESTAMP): File creation timestamp.
-Logic:
-For each new incoming file, fetch its size and timestamp.
-Query the last two days' data from file_size_table.
-Calculate the 2-day average file size.
-Compare the new file's size against the 2-day average and compute the variance.
-Log or alert if the variance exceeds a threshold.
-Implementation:
-Use a Google Cloud Function to trigger this logic whenever a new file is processed.
-Use BigQuery SQL queries to compute the 2-day average.
-
-  import os
-from google.cloud import bigquery
-import json
-
-# Initialize BigQuery client
-client = bigquery.Client()
-
-def calculate_2day_avg_and_variance(event, context):
-    """
-    Cloud Function to calculate file size variance against the 2-day average.
-    Triggered by new incoming file metadata.
-    """
-    # Parse event data (assuming Pub/Sub message contains file metadata)
-    data = json.loads(event['data'].decode('utf-8'))
-    file_id = data.get('file_id')
-    size = int(data.get('size'))  # File size in bytes
-    create_ts = data.get('create_ts')  # File creation timestamp (ISO 8601 format)
-
-    if not file_id or not size or not create_ts:
-        print("Invalid input data.")
-        return
-
-    print(f"Processing file: {file_id}, Size: {size} bytes, Timestamp: {create_ts}")
-
-    # Query the 2-day average from BigQuery
-    query = f"""
-        SELECT AVG(size) AS avg_size
-        FROM `your_project_id.your_dataset_id.file_size_table`
-        WHERE create_ts BETWEEN TIMESTAMP_SUB(TIMESTAMP('{create_ts}'), INTERVAL 2 DAY)
-                            AND TIMESTAMP('{create_ts}')
-    """
-    query_job = client.query(query)
-    results = query_job.result()
-
-    avg_size = 0
-    for row in results:
-        avg_size = row.avg_size if row.avg_size is not None else 0
-
-    print(f"2-Day Average Size: {avg_size} bytes")
-
-    # Calculate variance
-    if avg_size > 0:
-        variance = ((size - avg_size) / avg_size) * 100
-        print(f"Variance: {variance:.2f}%")
-
-        # Flag if variance exceeds threshold (e.g., 20%)
-        threshold = 20
-        if abs(variance) > threshold:
-            print(f"ALERT: File size variance for {file_id} exceeds {threshold}%")
-    else:
-        print("No data available for the past 2 days to calculate average.")
-
-    # Optionally, insert the new file into BigQuery table
-    table_id = "your_project_id.your_dataset_id.file_size_table"
-    rows_to_insert = [
-        {
-            "file_id": file_id,
-            "size": size,
-            "create_ts": create_ts,
-        }
-    ]
-    errors = client.insert_rows_json(table_id, rows_to_insert)
-    if errors:
-        print(f"Failed to insert data: {errors}")
-    else:
-        print(f"Successfully inserted file: {file_id}")
-
-#####
-import ijson
-from google.cloud import storage
-
-def process_jsonl(event, context):
-    # File details from event
-    bucket_name = event['bucket']
-    file_name = event['name']
-
-    # Initialize Cloud Storage client
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(file_name)
-
-    # Stream the file from Cloud Storage
-    file_stream = blob.download_as_bytes()
-    
-    # Use ijson for schema extraction
-    schema = set()
-
-    # Stream through the file and extract schema
-    for obj in ijson.items(file_stream, 'item'):
-        schema.update(obj.keys())
-        # Limit to first 1000 lines for performance
-        if len(schema) > 1000:
-            break
-
-    print("Extracted Schema:", schema)
-
-
-import pandas as pd
-from google.cloud import storage
-
-def process_jsonl(event, context):
-    # File details from event
-    bucket_name = event['bucket']
-    file_name = event['name']
-
-    # Initialize Cloud Storage client
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(file_name)
-
-    # Stream the file as a readable object
-    file_stream = blob.download_as_text()
-
-    # Initialize an empty set for schema extraction
-    schema = set()
-
-    # Process the file in chunks
-    chunk_size = 100000  # Number of lines per chunk
-    lines = file_stream.splitlines()
-
-    for i in range(0, len(lines), chunk_size):
-        # Read a chunk into a DataFrame
-        chunk = pd.read_json("\n".join(lines[i:i+chunk_size]), lines=True)
-
-        # Extract and update schema
-        schema.update(chunk.columns)
-
-        # Break early if schema extraction is complete (optional)
-        if len(schema) > 1000:
-            break
-
-    print("Extracted Schema:", schema)
-
-
-#####
-import pandas as pd
-
-# Function to extract only keys
-def extract_keys(df):
-    keys = set()
-    for col in df.columns:
-        first_valid = df[col].dropna().iloc[0] if not df[col].dropna().empty else None
-        
-        if isinstance(first_valid, dict):
-            nested_df = pd.json_normalize(df[col].dropna().tolist())
-            keys.add(col)
-            nested_keys = extract_keys(nested_df)
-            keys.update(f"{col}.{k}" for k in nested_keys)
-        
-        elif isinstance(first_valid, list):
-            exploded = df[col].explode().dropna()
-            if not exploded.empty and isinstance(exploded.iloc[0], dict):
-                nested_list_df = pd.json_normalize(exploded.tolist())
-                keys.add(col)
-                nested_keys = extract_keys(nested_list_df)
-                keys.update(f"{col}.{k}" for k in nested_keys)
-            else:
-                keys.add(col)
-        else:
-            keys.add(col)
-    
-    return keys
-
-# Reading JSON file in chunks
-chunk_size = 1000
-json_file = "large_file.json"
-
-all_keys = set()
-
-# Process each chunk
-for chunk in pd.read_json(json_file, lines=True, chunksize=chunk_size):
-    chunk_keys = extract_keys(chunk)
-    all_keys.update(chunk_keys)
-
-# Pretty print the final list of keys
-import pprint
-pprint.pprint(sorted(all_keys))
-
+for row in results:
+    print(f"Base: {row.base_name}, File: {row.file_name}, Size: {row.file_size}, Date: {row.create_ts}")
 
