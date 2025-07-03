@@ -1,3 +1,47 @@
+import re
+
+def get_base_name(filename):
+    """
+    Robust financial filename parser that correctly handles:
+    - Standard prefix patterns (INST_REPORT_YYYYMMDD)
+    - Date-first patterns (YYYYMMDD_INST_REPORT)
+    - Mixed delimiters (._-)
+    - Version tags (_v2, .v3)
+    - No-delimiter fallback (INSTYYYYMMDD)
+    """
+    # Preprocess filename (normalize delimiters and remove spaces)
+    normalized = re.sub(r'[ .-]', '_', filename.strip())
+    
+    # Ordered patterns (most specific to most general)
+    patterns = [
+        # 1. Standard prefix before date (INST_REPORT_YYYYMMDD)
+        r'^([a-zA-Z0-9_]+(?:_[a-zA-Z0-9]+)*)_\d{8}(?:_\d+)?(?:\..+)?$',
+        
+        # 2. Dot-delimited prefix (INST.REPORT.YYYYMMDD)
+        r'^([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9]+)*)\.\d{8}(?:\.\d+)?(?:\..+)?$',
+        
+        # 3. Date-first patterns (YYYYMMDD_INST_REPORT)
+        r'^\d{8}_([a-zA-Z0-9_]+(?:_[a-zA-Z0-9]+)*)(?:_v\d+)?(?:\..+)?$',
+        
+        # 4. No-delimiter patterns (INSTYYYYMMDD)
+        r'^([a-zA-Z]+)\d{8}(?:\..+)?$',
+        
+        # 5. Versioned files (INST_REPORT_v2_YYYYMMDD)
+        r'^([a-zA-Z0-9_]+(?:_[a-zA-Z0-9]+)*)(?:_v\d+)?_\d{8}(?:\..+)?$'
+    ]
+    
+    for pattern in patterns:
+        match = re.match(pattern, normalized)
+        if match:
+            base = match.group(1)
+            # Clean up any residual delimiters
+            base = re.sub(r'_{2,}', '_', base).rstrip('_')
+            return base.replace('.', '_')  # Standardize to underscores
+    
+    # Final fallback - take everything before first dot
+    return normalized.split('.')[0]
+
+#####
 def get_base_name(filename):
     """
     Final robust version handling:
