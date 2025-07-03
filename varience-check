@@ -1,3 +1,27 @@
+def get_base_name(filename):
+    """
+    Final robust version handling:
+    - All standard financial patterns
+    - Date-first and date-last formats
+    - Mixed delimiters (._)
+    - Version tags
+    - No-delimiter fallback
+    """
+    patterns = [
+        r'^([a-zA-Z0-9_.]+?)[._]\d{8}(?:[._]\d+)?(?:\..+)?$',  # Standard prefix
+        r'^\d{8}[._]([a-zA-Z0-9_.]+?)(?:[._]v\d+)?(?:\..+)?$', # Date-first
+        r'^([a-zA-Z0-9]+)\d{8}(?:\..+)?$',                     # No-delimiter
+        r'^([a-zA-Z0-9_.]+)$'                                   # No pattern match
+    ]
+    
+    for pattern in patterns:
+        match = re.match(pattern, filename)
+        if match:
+            return match.group(1)
+    return filename.split('.')[0]  # Ultimate fallback
+
+
+#####
 from google.cloud import bigquery
 
 client = bigquery.Client()
