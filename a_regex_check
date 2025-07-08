@@ -1,3 +1,37 @@
+from google.cloud import storage
+
+def copy_files_to_new_bucket(file_paths: list, destination_bucket_name: str):
+    storage_client = storage.Client()
+
+    for full_path in file_paths:
+        parts = full_path.split('/', 1)
+        if len(parts) != 2:
+            print(f"Invalid file path format: {full_path}")
+            continue
+
+        source_bucket_name, blob_path = parts
+
+        source_bucket = storage_client.bucket(source_bucket_name)
+        source_blob = source_bucket.blob(blob_path)
+
+        destination_bucket = storage_client.bucket(destination_bucket_name)
+        destination_blob = destination_bucket.blob(blob_path)
+
+        destination_blob.rewrite(source_blob)
+        print(f"✅ Copied: {full_path} → gs://{destination_bucket_name}/{blob_path}")
+
+# Example test case
+if __name__ == "__main__":
+    test_file_paths = [
+        "source-bucket-123/folder1/test1.txt",
+        "source-bucket-123/folder2/test2.csv"
+    ]
+    destination = "destination-bucket-456"
+    copy_files_to_new_bucket(test_file_paths, destination)
+
+
+
+
 gsutil -m cp -r gs://source-bucket-name/* gs://destination-bucket-name/
 
 
