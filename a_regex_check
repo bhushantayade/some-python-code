@@ -1,3 +1,30 @@
+gsutil -m cp -r gs://source-bucket-name/* gs://destination-bucket-name/
+
+
+
+from google.cloud import storage
+
+def copy_all_files(source_bucket_name, destination_bucket_name, prefix=""):
+    client = storage.Client()
+
+    source_bucket = client.bucket(source_bucket_name)
+    destination_bucket = client.bucket(destination_bucket_name)
+
+    blobs = client.list_blobs(source_bucket, prefix=prefix)
+
+    for blob in blobs:
+        source_blob = source_bucket.blob(blob.name)
+        destination_blob = destination_bucket.blob(blob.name)
+        
+        destination_blob.rewrite(source_blob)
+        print(f"Copied: {blob.name}")
+
+# Example usage
+copy_all_files("source-bucket-name", "destination-bucket-name")
+
+
+
+######
 import re
 
 def get_base_name(filename):
