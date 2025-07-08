@@ -1,3 +1,187 @@
+from google.cloud import bigquery
+from google.api_core.exceptions import GoogleAPICallError, RetryError
+from google.api_core.retry import Retry
+import functions_framework
+from typing import Optional, Union, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import json
+
+class BigQueryConnectionManager:
+    """Thread-safe BigQuery connection handler with concurrent processing support."""
+    
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls, *args, **kwargs):
+        """Singleton pattern to avoid multiple instances."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._init_connection(*args, **kwargs)
+            return cls._instance
+    
+    def _init_connection(self, 
+                        project_id: Optional[str] = None,
+                        location: Optional[str] = None,
+                        default_dataset: Optional[str] = None):
+        """Initialize connection parameters (called once)."""
+        self._project_id = project_id
+        self._location = location
+        self._default_dataset = default_dataset
+        self._client = None
+        self._client_lock = threading.Lock()
+        self._executor = ThreadPoolExecutor()
+    
+    @property
+    def client(self) -> bigquery.Client:
+        """Thread-safe lazy loading of BigQuery client."""
+        if self._client is None:
+            with self._client_lock:
+                if self._client is None:  # Double-check locking
+                    self._client = bigquery.Client(
+                        project=self._project_id,
+                        location=self._location
+                    )
+        return self._client
+    
+    def close(self) -> None:
+        """Safely close the connection and cleanup resources."""
+        with self._client_lock:
+            if self._client is not None:
+                self._client.close()
+                self._client = None
+            if hasattr(self, '_executor'):
+                self._executor.shutdown(wait=True)
+    
+    def test_connection(self) -> bool:
+        """Test connection with thread-safe operation."""
+        try:
+            # Use a simple metadata operation to test connection
+            with self._client_lock:
+                self.client.list_datasets(max_results=1)
+            return True
+        except GoogleAPICallError:
+            return False
+    
+    def _execute_query_threadsafe(
+        self,
+        query: str,
+        params: Optional[Union[List, Dict]] = None,
+        retry: Optional[Retry] = None
+    ) -> List[Dict[str, Any]]:
+        """Internal thread-safe query execution method."""
+        job_config = bigquery.QueryJobConfig()
+        if params:
+            job_config.query_parameters = params
+        if self._default_dataset:
+            job_config.default_dataset = f"{self.client.project}.{self._default_dataset}"
+        
+        with self._client_lock:
+            query_job = self.client.query(
+                query,
+                job_config=job_config,
+                retry=retry
+            )
+            return [dict(row) for row in query_job.result()]
+    
+    async def execute_query_async(
+        self,
+        query: str,
+        params: Optional[Union[List, Dict]] = None,
+        retry: Optional[Retry] = None
+    ) -> List[Dict[str, Any]]:
+        """Execute query asynchronously for concurrent processing."""
+        return await self._executor.submit(
+            self._execute_query_threadsafe,
+            query,
+            params,
+            retry
+        )
+    
+    def process_files_concurrently(
+        self,
+        file_data: List[Dict[str, Any]],
+        process_func: callable,
+        max_workers: Optional[int] = None
+    ) -> List[Any]:
+        """
+        Process multiple files concurrently with BigQuery operations.
+        
+        Args:
+            file_data: List of file metadata/contents to process
+            process_func: Function that takes (connection, file_data) and returns processed result
+            max_workers: Maximum concurrent workers (default: ThreadPoolExecutor default)
+            
+        Returns:
+            List of results in the same order as input
+        """
+        def _process_wrapper(file_item):
+            try:
+                return process_func(self, file_item)
+            except Exception as e:
+                return {"error": str(e), "file": file_item.get('filename', 'unknown')}
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(_process_wrapper, file_data))
+        
+        return results
+
+# Example Usage in Cloud Function
+@functions_framework.http
+def process_files_with_bigquery(request):
+    """HTTP Cloud Function for concurrent file processing with BigQuery."""
+    try:
+        # Initialize connection manager (singleton)
+        bq_manager = BigQueryConnectionManager(
+            project_id="your-project-id",
+            location="US",
+            default_dataset="your_dataset"
+        )
+        
+        # Example file processing function
+        def process_file(conn, file_item):
+            """Example processing function for each file."""
+            # 1. Parse file content
+            data = json.loads(file_item['content'])
+            
+            # 2. Insert into staging table
+            conn.execute_query_async(
+                "INSERT INTO temp_staging (data) VALUES (@data)",
+                params=[bigquery.ScalarQueryParameter("data", "STRING", json.dumps(data))]
+            )
+            
+            # 3. Transform data
+            transformed = conn.execute_query_async(
+                "CALL transform_data(@file_id)",
+                params=[bigquery.ScalarQueryParameter("file_id", "STRING", file_item['id'])]
+            )
+            
+            return {"file_id": file_item['id'], "status": "processed", "rows": len(transformed)}
+        
+        # Get files from request (mock example)
+        files_to_process = request.get_json().get('files', [])
+        
+        # Process files concurrently
+        results = bq_manager.process_files_concurrently(
+            file_data=files_to_process,
+            process_func=process_file,
+            max_workers=5  # Adjust based on your needs
+        )
+        
+        return {
+            "status": "success",
+            "processed_files": len(results),
+            "results": results
+        }, 200
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }, 500
+
+#####
 from google.cloud import storage
 
 def copy_files_to_new_bucket(file_paths: list, destination_bucket_name: str):
