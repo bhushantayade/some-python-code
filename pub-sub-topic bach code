@@ -1,3 +1,40 @@
+from google.cloud import storage
+from google.auth.transport.requests import AuthorizedSession
+import google.auth
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def get_custom_storage_client(pool_size=100):
+    # Get default credentials
+    credentials, _ = google.auth.default()
+
+    # Create a requests session
+    session = requests.Session()
+
+    # Configure HTTPAdapter with larger connection pool
+    adapter = HTTPAdapter(
+        pool_connections=pool_size,
+        pool_maxsize=pool_size,
+        max_retries=Retry(total=3, backoff_factor=0.3)
+    )
+
+    # Mount adapter to HTTP and HTTPS
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    # AuthorizedSession wraps the session with credentials
+    authed_session = AuthorizedSession(credentials, session=session)
+
+    # Pass the session into the BigQuery client
+    return storage.Client(_http=authed_session)
+
+# Example usage
+client = get_custom_storage_client(pool_size=50)
+
+
+
+######
 import base64
 import json
 import os
