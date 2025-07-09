@@ -1,3 +1,131 @@
+import base64
+import json
+import os
+from google.cloud import bigquery, pubsub_v1
+from google.api_core.exceptions import NotFound
+import functions_framework
+
+# Initialize clients globally (they're thread-safe)
+bq_client = bigquery.Client()
+subscriber = pubsub_v1.SubscriberClient()
+
+# Configurable parameters
+PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT')
+DATASET_ID = os.getenv('BQ_DATASET', 'file_uploads')
+TABLE_ID = os.getenv('BQ_TABLE', 'uploaded_files')
+SUBSCRIPTION_ID = os.getenv('PUBSUB_SUBSCRIPTION', 'file-upload-sub')
+
+@functions_framework.http
+def process_uploaded_files(request):
+    """HTTP-triggered Gen 2 function to process Pub/Sub messages."""
+    try:
+        # 1. Pull messages from Pub/Sub
+        subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
+        response = subscriber.pull(
+            subscription=subscription_path,
+            max_messages=10,  # Process up to 10 messages at once
+            timeout=5.0
+        )
+        
+        if not response.received_messages:
+            return {"status": "success", "message": "No messages to process"}, 200
+
+        ack_ids = []
+        processed_messages = []
+
+        # 2. Process each message
+        for msg in response.received_messages:
+            try:
+                file_data = parse_pubsub_message(msg.message)
+                insert_into_bigquery(file_data)
+                
+                # Collect successfully processed messages
+                ack_ids.append(msg.ack_id)
+                processed_messages.append({
+                    "file_name": file_data.get("name"),
+                    "status": "processed"
+                })
+            except Exception as e:
+                print(f"Failed to process message: {str(e)}")
+                continue
+
+        # 3. Acknowledge successful messages
+        if ack_ids:
+            subscriber.acknowledge(
+                subscription=subscription_path,
+                ack_ids=ack_ids
+            )
+
+        return {
+            "status": "success",
+            "processed": len(processed_messages),
+            "messages": processed_messages
+        }, 200
+
+    except Exception as e:
+        print(f"Error processing messages: {str(e)}")
+        return {"status": "error", "message": str(e)}, 500
+
+def parse_pubsub_message(message):
+    """Parse Pub/Sub message data from file upload notification."""
+    try:
+        # Decode base64 message data if needed
+        if message.data:
+            data = base64.b64decode(message.data).decode('utf-8')
+            event = json.loads(data)
+            
+            # Extract relevant file information
+            return {
+                "name": event.get("name"),
+                "bucket": event.get("bucket"),
+                "size": event.get("size"),
+                "time_created": event.get("timeCreated"),
+                "content_type": event.get("contentType"),
+                "processed_at": bigquery.ScalarQueryParameter(
+                    "processed_at", "TIMESTAMP", bigquery.Client().query(
+                        "SELECT CURRENT_TIMESTAMP()").result().one()[0]
+                )
+            }
+        raise ValueError("Empty message data")
+    except Exception as e:
+        print(f"Error parsing message: {str(e)}")
+        raise
+
+def insert_into_bigquery(file_data):
+    """Insert file metadata into BigQuery table."""
+    table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
+    
+    # Ensure table exists
+    try:
+        bq_client.get_table(table_ref)
+    except NotFound:
+        create_upload_table(table_ref)
+    
+    # Prepare and execute insert
+    errors = bq_client.insert_rows_json(
+        table_ref,
+        [file_data]
+    )
+    
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+def create_upload_table(table_ref):
+    """Create the files table if it doesn't exist."""
+    schema = [
+        bigquery.SchemaField("name", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("bucket", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("size", "INT64"),
+        bigquery.SchemaField("time_created", "TIMESTAMP"),
+        bigquery.SchemaField("content_type", "STRING"),
+        bigquery.SchemaField("processed_at", "TIMESTAMP", mode="REQUIRED"),
+    ]
+    
+    table = bigquery.Table(table_ref, schema=schema)
+    bq_client.create_table(table)
+    print(f"Created table {table_ref}")
+
+#####
 Step 1: File Upload Notification to Pub/Sub
 Ensure your Cloud Storage bucket is configured to send notifications to the Pub/Sub topic.
 
