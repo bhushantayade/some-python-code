@@ -1,3 +1,150 @@
+from concurrent.futures import ThreadPoolExecutor
+from google.cloud import pubsub_v1
+import time
+import threading
+
+PROJECT_ID = "your-gcp-project-id"
+SUBSCRIPTION_ID = "your-subscription-id"
+MAX_BATCH_SIZE = 20
+
+# Shared queue and lock
+batch_lock = threading.Lock()
+message_batch = []
+
+# Thread pool for file processing
+executor = ThreadPoolExecutor(max_workers=20)
+
+def process_file(file_metadata):
+    # Your actual file processing logic goes here
+    print(f"Processing file: {file_metadata}")
+    time.sleep(1)  # simulate work
+
+def process_batch(batch):
+    print(f"Processing batch of {len(batch)} files")
+    # Extract message data and ack_ids
+    futures = []
+    for msg in batch:
+        futures.append(executor.submit(process_file, msg.data.decode("utf-8")))
+    
+    # Wait for all tasks in batch to complete
+    for future in futures:
+        future.result()
+    
+    # After processing, ack messages
+    ack_ids = [msg.ack_id for msg in batch]
+    subscriber.acknowledge(subscription=subscription_path, ack_ids=ack_ids)
+    print("Batch processing complete and messages acknowledged")
+
+def callback(message):
+    global message_batch
+
+    with batch_lock:
+        message_batch.append(message)
+
+        if len(message_batch) >= MAX_BATCH_SIZE:
+            # Freeze current batch and reset
+            current_batch = message_batch[:MAX_BATCH_SIZE]
+            message_batch = message_batch[MAX_BATCH_SIZE:]
+
+            # Process the current batch in a new thread
+            threading.Thread(target=process_batch, args=(current_batch,)).start()
+
+if __name__ == "__main__":
+    subscriber = pubsub_v1.SubscriberClient()
+    subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
+
+    streaming_pull_future = subscriber.subscribe(subscription_path, callback=callback)
+    print(f"Listening for messages on {subscription_path}...\n")
+
+    try:
+        streaming_pull_future.result()
+    except KeyboardInterrupt:
+        print("Stopped listening.")
+        streaming_pull_future.cancel()
+#####
+
+from concurrent.futures import ThreadPoolExecutor
+from google.cloud import pubsub_v1
+import time
+import threading
+
+# --- Configuration ---
+PROJECT_ID = "your-gcp-project-id"
+SUBSCRIPTION_ID = "your-subscription-id"
+MAX_BATCH_SIZE = 20
+
+# --- Globals ---
+batch_lock = threading.Lock()
+message_batch = []
+
+# Thread pool for concurrent file processing
+executor = ThreadPoolExecutor(max_workers=20)
+
+# Pub/Sub client
+subscriber = pubsub_v1.SubscriberClient()
+subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
+
+
+# --- Function to process a single file ---
+def process_file(file_metadata):
+    print(f"[PROCESSING] File: {file_metadata}")
+    time.sleep(1)  # Simulate some work
+
+
+# --- Function to process a full batch of messages ---
+def process_batch(batch):
+    print(f"\n[INFO] Processing batch of {len(batch)} files")
+
+    # Submit each message's data to the thread pool
+    futures = []
+    for msg in batch:
+        file_metadata = msg.data.decode("utf-8")
+        futures.append(executor.submit(process_file, file_metadata))
+
+    # Wait for all processing to finish
+    for future in futures:
+        future.result()
+
+    # After all processing is successful, acknowledge each message
+    try:
+        for msg in batch:
+            msg.ack()  # ✅ Acknowledge message
+        print("[INFO] Batch acknowledged successfully\n")
+    except Exception as e:
+        print(f"[ERROR] Failed to ack messages: {e}")
+
+
+# --- Pub/Sub callback ---
+def callback(message):
+    global message_batch
+
+    with batch_lock:
+        message_batch.append(message)
+
+        # Trigger batch if enough messages collected
+        if len(message_batch) >= MAX_BATCH_SIZE:
+            current_batch = message_batch[:MAX_BATCH_SIZE]
+            message_batch = message_batch[MAX_BATCH_SIZE:]
+
+            # Process batch in a background thread
+            threading.Thread(target=process_batch, args=(current_batch,)).start()
+
+
+# --- Start streaming messages ---
+if __name__ == "__main__":
+    print(f"[STARTED] Listening to {subscription_path}...")
+    streaming_pull_future = subscriber.subscribe(subscription_path, callback=callback)
+
+    try:
+        streaming_pull_future.result()
+    except KeyboardInterrupt:
+        print("[STOPPED] Listener interrupted.")
+        streaming_pull_future.cancel()
+
+
+
+
+#####
 Micro-batching in Google Cloud for processing a large number of files can be achieved by combining several GCP services. The general idea is to group files into smaller batches and process them collectively. Here’s a step-by-step approach:
 
 1. Use Cloud Storage as the Source
