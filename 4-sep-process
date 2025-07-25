@@ -3,6 +3,101 @@ from google.cloud import pubsub_v1
 import time
 import threading
 
+# --- Configuration ---
+PROJECT_ID = "your-gcp-project-id"
+SUBSCRIPTION_ID = "your-subscription-id"
+MAX_TOTAL_MESSAGES = 1000
+BATCH_SIZE = 20
+PULL_TIMEOUT = 5  # seconds
+
+# --- Globals ---
+message_batch = []
+batch_lock = threading.Lock()
+total_processed = 0
+
+# Executors and clients
+executor = ThreadPoolExecutor(max_workers=BATCH_SIZE)
+subscriber = pubsub_v1.SubscriberClient()
+subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
+
+# --- Simulated File Processing ---
+def process_file(file_metadata):
+    print(f"[PROCESSING] File: {file_metadata}")
+    time.sleep(0.5)  # Simulate processing time
+
+# --- Batch Processor ---
+def process_batch(batch):
+    futures = []
+    for msg in batch:
+        file_metadata = msg.message.data.decode("utf-8")
+        futures.append(executor.submit(process_file, file_metadata))
+
+    for future in futures:
+        future.result()
+
+    # Acknowledge processed messages
+    ack_ids = [msg.ack_id for msg in batch]
+    subscriber.acknowledge(subscription=subscription_path, ack_ids=ack_ids)
+    print(f"[INFO] Batch of {len(batch)} acknowledged.\n")
+
+# --- Main Cloud Task Handler ---
+def cloud_task_handler():
+    global total_processed, message_batch
+
+    print(f"[START] Pulling up to {MAX_TOTAL_MESSAGES} messages from {subscription_path}")
+
+    while total_processed < MAX_TOTAL_MESSAGES:
+        remaining = MAX_TOTAL_MESSAGES - total_processed
+        max_pull = min(BATCH_SIZE, remaining)
+
+        response = subscriber.pull(
+            request={
+                "subscription": subscription_path,
+                "max_messages": max_pull,
+            },
+            timeout=PULL_TIMEOUT,
+        )
+
+        if not response.received_messages:
+            print("[INFO] No messages pulled. Exiting.")
+            break
+
+        with batch_lock:
+            message_batch.extend(response.received_messages)
+
+            while len(message_batch) >= BATCH_SIZE:
+                current_batch = message_batch[:BATCH_SIZE]
+                message_batch = message_batch[BATCH_SIZE:]
+
+                total_processed += len(current_batch)
+                print(f"[INFO] Total processed: {total_processed}")
+
+                # Process and ack in thread
+                threading.Thread(target=process_batch, args=(current_batch,)).start()
+
+    # Process any remaining messages (< BATCH_SIZE)
+    if message_batch:
+        remaining_batch = message_batch[:]
+        message_batch = []
+        total_processed += len(remaining_batch)
+        print(f"[INFO] Final flush: {len(remaining_batch)} messages")
+        process_batch(remaining_batch)
+
+    print(f"[DONE] Cloud Task finished. Total files processed: {total_processed}")
+
+
+# --- Entry Point (for Cloud Task) ---
+if __name__ == "__main__":
+    cloud_task_handler()
+
+
+
+#####
+from concurrent.futures import ThreadPoolExecutor
+from google.cloud import pubsub_v1
+import time
+import threading
+
 PROJECT_ID = "your-gcp-project-id"
 SUBSCRIPTION_ID = "your-subscription-id"
 MAX_BATCH_SIZE = 20
