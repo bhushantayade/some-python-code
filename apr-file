@@ -1,3 +1,129 @@
+import time
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from google.cloud import pubsub_v1
+
+# --- Configuration ---
+PROJECT_ID = "your-gcp-project-id"
+SUBSCRIPTION_ID = "your-subscription-id"
+MAX_TOTAL_MESSAGES = 1000
+BATCH_SIZE = 20
+PULL_TIMEOUT = 5
+
+# --- Globals ---
+message_batch = []
+batch_lock = threading.Lock()
+total_processed = 0
+
+# --- Clients ---
+subscriber = pubsub_v1.SubscriberClient()
+subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
+executor = ThreadPoolExecutor(max_workers=10)  # controls batch execution threads
+
+# --- File Processing ---
+def process_file(file_metadata):
+    print(f"[PROCESSING] File: {file_metadata}")
+    time.sleep(0.5)  # Simulate work
+
+# --- Process & Ack a Batch ---
+def process_batch(batch):
+    futures = []
+    for msg in batch:
+        payload = json.loads(msg.message.data.decode("utf-8"))
+        file_name = payload.get("file_name")
+        futures.append(executor.submit(process_file, file_name))
+
+    for future in futures:
+        future.result()
+
+    # Ack all messages in this batch
+    ack_ids = [msg.ack_id for msg in batch]
+    subscriber.acknowledge(subscription=subscription_path, ack_ids=ack_ids)
+    print(f"[ACKED] Batch of {len(batch)} messages.\n")
+
+# --- Main Handler ---
+def cloud_task_handler():
+    global total_processed, message_batch
+
+    print(f"[START] Pulling from: {subscription_path}")
+
+    while total_processed < MAX_TOTAL_MESSAGES:
+        remaining = MAX_TOTAL_MESSAGES - total_processed
+        max_pull = min(BATCH_SIZE, remaining)
+
+        try:
+            response = subscriber.pull(
+                request={
+                    "subscription": subscription_path,
+                    "max_messages": max_pull
+                },
+                timeout=PULL_TIMEOUT
+            )
+
+            if not response.received_messages:
+                time.sleep(1)
+                continue
+
+            valid_msgs = []
+            invalid_ack_ids = []
+
+            for msg in response.received_messages:
+                try:
+                    payload = json.loads(msg.message.data.decode("utf-8"))
+                    if "file_name" in payload:
+                        valid_msgs.append(msg)
+                    else:
+                        print(f"[SKIP] No 'file_name': {payload}")
+                        invalid_ack_ids.append(msg.ack_id)
+                except json.JSONDecodeError:
+                    print(f"[SKIP] Invalid JSON: {msg.message.data}")
+                    invalid_ack_ids.append(msg.ack_id)
+
+            # Ack skipped messages
+            if invalid_ack_ids:
+                subscriber.acknowledge(subscription=subscription_path, ack_ids=invalid_ack_ids)
+
+            # Add valid messages to batch
+            with batch_lock:
+                message_batch.extend(valid_msgs)
+
+                while len(message_batch) >= BATCH_SIZE:
+                    current_batch = message_batch[:BATCH_SIZE]
+                    message_batch = message_batch[BATCH_SIZE:]
+                    total_processed += len(current_batch)
+                    print(f"[INFO] Total processed: {total_processed}")
+                    executor.submit(process_batch, current_batch)
+
+        except Exception as e:
+            print(f"[ERROR] Pulling failed: {e}")
+            time.sleep(2)
+
+    # Final flush
+    with batch_lock:
+        if message_batch:
+            remaining_batch = message_batch[:]
+            message_batch = []
+            total_processed += len(remaining_batch)
+            print(f"[FINAL] Processing {len(remaining_batch)} remaining messages")
+            executor.submit(process_batch, remaining_batch)
+
+    # Wait for all processing to finish
+    executor.shutdown(wait=True)
+    print(f"[DONE] All messages processed and acknowledged. Total: {total_processed}")
+
+
+# --- Entry Point ---
+if __name__ == "__main__":
+    try:
+        cloud_task_handler()
+    except KeyboardInterrupt:
+        print("\n[STOPPED] Graceful shutdown.")
+
+
+
+######
+
 CREATE OR REPLACE VIEW `your_project.analytics.unified_service_incidents` AS
 WITH 
 -- Extract BigQuery incidents
