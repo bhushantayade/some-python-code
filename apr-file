@@ -1,3 +1,22 @@
+SELECT
+  protoPayload.resourceName AS full_path,
+
+  REGEXP_EXTRACT(
+    protoPayload.resourceName,
+    r'^projects/_/buckets/[^/]+/objects/(.*)/[^/]+$'
+  ) AS folder_path
+
+FROM
+  `your_project.your_dataset.cloudaudit_googleapis_com_data_access`
+
+WHERE
+  protoPayload.resourceName LIKE '%objects/%'
+  AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+LIMIT 5;
+
+
+
+@@@
 import time
 import json
 import threading
