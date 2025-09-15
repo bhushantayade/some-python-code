@@ -1,0 +1,32 @@
+WITH parsed AS (
+  SELECT
+    resource.labels.bucket_name AS bucket_name,
+    -- Extract file_name without generation number
+    REGEXP_EXTRACT(protoPayload.resourceName, r'/objects/([^#]+)') AS file_name,
+    timestamp AS create_ts
+  FROM
+    `project.gcs_logs.cloudaudit_googleapis_com_data_access`
+  WHERE
+    protoPayload.methodName = "storage.objects.create"
+    AND protoPayload.resourceName IS NOT NULL
+)
+
+SELECT
+  bucket_name,
+  create_date,
+  COUNT(1) AS unique_file_count_first_seen
+FROM (
+  SELECT
+    bucket_name,
+    file_name,
+    DATE(create_ts) AS create_date,
+    ROW_NUMBER() OVER (
+      PARTITION BY bucket_name, file_name
+      ORDER BY create_ts
+    ) AS rn
+  FROM parsed
+  WHERE file_name IS NOT NULL
+)
+WHERE rn = 1
+GROUP BY bucket_name, create_date
+ORDER BY bucket_name, create_date;
