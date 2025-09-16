@@ -1,6 +1,48 @@
 import re
 from datetime import datetime
 
+def resolve_date_path(file_path: str, target_date: datetime = None) -> str:
+    """
+    Replace date placeholders safely, avoiding replacements embedded within alphabetic words.
+    Supports both uppercase and lowercase tokens:
+      YYYY, YY, MM, DD
+      yyyy, yy, mm, dd
+    Also supports combined tokens like YYYYMMDD or yyyymmdd.
+    """
+    if target_date is None:
+        target_date = datetime.now()
+
+    # Replacement tokens ordered longest-first
+    replacements = [
+        ("YYYYMMDD", target_date.strftime("%Y%m%d")),
+        ("YYYYMM",   target_date.strftime("%Y%m")),
+        ("YYYY",     target_date.strftime("%Y")),
+        ("YY",       target_date.strftime("%y")),
+        ("MM",       target_date.strftime("%m")),
+        ("DD",       target_date.strftime("%d")),
+
+        ("yyyyMMdd", target_date.strftime("%Y%m%d")),  # lowercase full
+        ("yyyyMM",   target_date.strftime("%Y%m")),
+        ("yyyy",     target_date.strftime("%Y")),
+        ("yy",       target_date.strftime("%y")),
+        ("mm",       target_date.strftime("%m")),
+        ("dd",       target_date.strftime("%d")),
+    ]
+
+    result = file_path
+    for placeholder, replacement in replacements:
+        # negative lookbehind/lookahead for alphabetic characters only
+        # ensures tokens inside words like COMMUNICATION won't be replaced
+        pattern = rf"(?<![A-Za-z]){re.escape(placeholder)}(?![A-Za-z])"
+        result = re.sub(pattern, replacement, result)
+
+    return result
+
+
+------
+import re
+from datetime import datetime
+
 def resolve_date_path(file_path, target_date=None):
     """
     Safely resolve date placeholders (YYYY, YY, MM, DD, YYYYMM, YYYYMMDD)
