@@ -1,3 +1,57 @@
+import re
+from datetime import datetime
+
+def resolve_date_path(file_path, target_date=None):
+    """
+    Safely resolve date placeholders (YYYY, YY, MM, DD, YYYYMM, YYYYMMDD)
+    in a file path without replacing random substrings like 'COMMUNICATION'.
+    """
+    if target_date is None:
+        target_date = datetime.now()
+
+    # Ordered longest → shortest to avoid partial replacements
+    format_replacements = [
+        (r'YYYYMMDD', target_date.strftime('%Y%m%d')),
+        (r'YYYYMM', target_date.strftime('%Y%m')),
+        (r'YYYY', target_date.strftime('%Y')),
+        (r'YY', target_date.strftime('%y')),
+        (r'MM', target_date.strftime('%m')),
+        (r'DD', target_date.strftime('%d'))
+    ]
+
+    # Replace only when they appear as clear tokens or sequences
+    for pattern, replacement in format_replacements:
+        file_path = re.sub(pattern, replacement, file_path)
+
+    return file_path
+
+TEST_DATE = datetime(2023, 11, 15)
+
+print(resolve_date_path("data/YYYY/file.json", TEST_DATE))    
+# → data/2023/file.json
+
+print(resolve_date_path("logs/YYYYMM/app.log", TEST_DATE))   
+# → logs/202311/app.log
+
+print(resolve_date_path("exports/YYYYMMDD/data.csv", TEST_DATE))   
+# → exports/20231115/data.csv
+
+print(resolve_date_path("archive/YYYY/MM/DD/backup.zip", TEST_DATE))   
+# → archive/2023/11/15/backup.zip
+
+print(resolve_date_path("COMMUNICATION_test.txt", TEST_DATE))   
+# → COMMUNICATION_test.txt   ✅ untouched
+
+print(resolve_date_path("X_YY_MM_DD_Y", TEST_DATE))  
+# → X_23_11_15_Y
+
+print(resolve_date_path("1YYYY2MM3DD4", TEST_DATE))  
+# → 1202311154   ✅ fixed
+
+
+
+
+#####
 WITH parsed AS (
   SELECT
     resource.labels.bucket_name AS bucket_name,
