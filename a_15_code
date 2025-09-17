@@ -1,3 +1,80 @@
+from google.cloud import bigquery_storage_v1
+from google.api_core.retry import Retry
+import json
+import uuid
+
+
+class BigQueryWriter:
+    def __init__(self, project_id: str, dataset: str, table: str):
+        self.client = bigquery_storage_v1.BigQueryWriteClient()
+        self.parent = self.client.table_path(project_id, dataset, table)
+
+    def insert_rows(self, rows: list[dict], stream_type: str = "COMMITTED"):
+        """
+        Insert rows into BigQuery using the Storage Write API.
+
+        Args:
+            rows (list[dict]): List of rows to insert (e.g., [{"id": 1, "name": "Alice"}]).
+            stream_type (str): "COMMITTED" (default) for real-time,
+                               "PENDING" for batch load.
+        """
+        # Create write stream (COMMITTED = visible immediately)
+        write_stream = bigquery_storage_v1.WriteStream()
+        write_stream.type_ = getattr(bigquery_storage_v1.WriteStream.Type, stream_type)
+        stream = self.client.create_write_stream(parent=self.parent, write_stream=write_stream)
+
+        # Prepare rows
+        proto_rows = bigquery_storage_v1.types.ProtoRows()
+        for row in rows:
+            # Assign unique insert_id for deduplication
+            row["_insert_id"] = str(uuid.uuid4())
+            proto_rows.serialized_rows.append(json.dumps(row).encode("utf-8"))
+
+        # Create request
+        request = bigquery_storage_v1.AppendRowsRequest(
+            write_stream=stream.name,
+            proto_rows=bigquery_storage_v1.AppendRowsRequest.ProtoData(
+                rows=proto_rows
+            )
+        )
+
+        # Append rows with retry
+        response = self.client.append_rows(
+            iter([request]),
+            retry=Retry(deadline=30.0, maximum=3)  # retry on transient errors
+        )
+
+        # Finalize the stream for batch loads
+        if stream_type == "PENDING":
+            self.client.finalize_write_stream(name=stream.name)
+
+        return response
+
+
+# -------------------
+# ✅ Usage Example
+# -------------------
+if __name__ == "__main__":
+    writer = BigQueryWriter("your_project", "your_dataset", "your_table")
+
+    # Real-time streaming insert
+    rows = [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"}
+    ]
+    response = writer.insert_rows(rows, stream_type="COMMITTED")
+    print("Streaming insert done:", response)
+
+    # Batch insert (not visible until committed later)
+    batch_rows = [
+        {"id": 3, "name": "Charlie"},
+        {"id": 4, "name": "David"}
+    ]
+    response = writer.insert_rows(batch_rows, stream_type="PENDING")
+    print("Batch insert done:", response)
+
+
+#####
 WITH parent AS (
   SELECT
     bucket_name,
