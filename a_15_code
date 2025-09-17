@@ -1,4 +1,59 @@
 from google.cloud import bigquery_storage_v1
+from google.cloud.bigquery_storage_v1 import types
+import uuid
+
+
+def insert_rows(project_id: str, dataset: str, table: str, rows: list[dict], stream_type: str = "COMMITTED"):
+    """
+    Insert rows into BigQuery using the Storage Write API (JsonStreamWriter).
+    """
+
+    client = bigquery_storage_v1.BigQueryWriteClient()
+    table_path = client.table_path(project_id, dataset, table)
+
+    # Create write stream
+    write_stream = types.WriteStream()
+    write_stream.type_ = getattr(types.WriteStream.Type, stream_type)
+    stream = client.create_write_stream(parent=table_path, write_stream=write_stream)
+
+    # JSON stream writer
+    writer = bigquery_storage_v1.JsonStreamWriter(
+        client=client,
+        stream_name=stream.name,
+    )
+
+    # Add insert IDs (optional but recommended for deduplication)
+    for row in rows:
+        row["_insert_id"] = str(uuid.uuid4())
+
+    # Append rows
+    writer.append(rows)
+    writer.close()
+
+    if stream_type == "PENDING":
+        client.finalize_write_stream(name=stream.name)
+
+    return f"✅ Inserted {len(rows)} rows into {dataset}.{table} using {stream_type} stream."
+
+
+# -----------------------
+# Quick Test Run
+# -----------------------
+if __name__ == "__main__":
+    PROJECT = "your_project"
+    DATASET = "your_dataset"
+    TABLE = "your_table"
+
+    test_rows = [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"},
+    ]
+
+    print(insert_rows(PROJECT, DATASET, TABLE, test_rows, stream_type="COMMITTED"))
+
+
+#####
+from google.cloud import bigquery_storage_v1
 from google.api_core.retry import Retry
 import json
 import uuid
