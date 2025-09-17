@@ -1,3 +1,35 @@
+WITH parent AS (
+  SELECT
+    bucket_name,
+    file_path AS original_path
+  FROM `project.dataset.parent_logs`
+),
+resolved AS (
+  SELECT
+    bucket_name,
+    resolved_path
+  FROM `project.dataset.resolved_paths`
+)
+
+SELECT
+  p.bucket_name,
+  p.original_path,
+  r.resolved_path
+FROM parent p
+JOIN resolved r
+  ON p.bucket_name = r.bucket_name
+ AND REGEXP_REPLACE(
+       p.original_path,
+       r'YYYYMMDD|yyyyMMdd|YYYYMM|yyyyMM|YYYY|yyyy|YY|yy|MM|mm|DD|dd',
+       ''
+     ) = REGEXP_REPLACE(
+       r.resolved_path,
+       r'[0-9]{8}|[0-9]{6}|[0-9]{4}|[0-9]{2}',
+       ''
+     );
+
+
+#####
 import re
 from datetime import datetime
 
