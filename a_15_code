@@ -1,30 +1,31 @@
 import re
-from datetime import datetime
 
-def reverse_resolve_date_path(file_path, target_date=None):
+def reverse_resolve_date_path(file_path: str) -> str:
     """
-    Reverse the resolution of date placeholders:
-    Replaces actual date values in the path back with tokens 
-    like YYYY, YY, MM, DD, YYYYMM, YYYYMMDD.
+    Reverse-engineer file paths by replacing detected date substrings 
+    with generic placeholders (YYYY, YY, MM, DD, YYYYMM, YYYYMMDD).
     """
-    if target_date is None:
-        target_date = datetime.now()
 
-    # Precompute date formats
-    date_patterns = [
-        (target_date.strftime('%Y%m%d'), 'YYYYMMDD'),
-        (target_date.strftime('%Y%m'), 'YYYYMM'),
-        (target_date.strftime('%Y'), 'YYYY'),
-        (target_date.strftime('%y'), 'YY'),
-        (target_date.strftime('%m'), 'MM'),
-        (target_date.strftime('%d'), 'DD')
-    ]
+    # Replace YYYYMMDD first (most specific: 8 digits)
+    file_path = re.sub(r'\b\d{8}\b', 'YYYYMMDD', file_path)
 
-    # Replace in longest → shortest order (to avoid partial overlaps)
-    for replacement, token in date_patterns:
-        file_path = re.sub(re.escape(replacement), token, file_path)
+    # Replace YYYYMM (6 digits) but not overlapping with YYYYMMDD
+    file_path = re.sub(r'\b\d{6}\b', 'YYYYMM', file_path)
+
+    # Replace YYYY (4 digits, usually years between 1900–2099)
+    file_path = re.sub(r'\b(19|20)\d{2}\b', 'YYYY', file_path)
+
+    # Replace YY (2 digits) carefully, avoid touching parts of larger numbers
+    file_path = re.sub(r'\b\d{2}\b', 'YY', file_path)
+
+    # Replace standalone MM (01–12)
+    file_path = re.sub(r'\b(0[1-9]|1[0-2])\b', 'MM', file_path)
+
+    # Replace standalone DD (01–31)
+    file_path = re.sub(r'\b(0[1-9]|[12]\d|3[01])\b', 'DD', file_path)
 
     return file_path
+
 
 
 #####
