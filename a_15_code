@@ -1,3 +1,108 @@
+import re
+from datetime import datetime
+
+def reverse_resolve_date_path(file_path, target_date=None):
+    """
+    Reverse the resolution of date placeholders:
+    Replaces actual date values in the path back with tokens 
+    like YYYY, YY, MM, DD, YYYYMM, YYYYMMDD.
+    """
+    if target_date is None:
+        target_date = datetime.now()
+
+    # Precompute date formats
+    date_patterns = [
+        (target_date.strftime('%Y%m%d'), 'YYYYMMDD'),
+        (target_date.strftime('%Y%m'), 'YYYYMM'),
+        (target_date.strftime('%Y'), 'YYYY'),
+        (target_date.strftime('%y'), 'YY'),
+        (target_date.strftime('%m'), 'MM'),
+        (target_date.strftime('%d'), 'DD')
+    ]
+
+    # Replace in longest → shortest order (to avoid partial overlaps)
+    for replacement, token in date_patterns:
+        file_path = re.sub(re.escape(replacement), token, file_path)
+
+    return file_path
+
+
+#####
+from google.cloud import bigquery_storage_v1
+from google.cloud.bigquery_storage_v1 import types
+from google.protobuf.json_format import ParseDict
+import uuid
+
+
+def insert_rows(project_id: str, dataset: str, table: str, rows: list[dict], stream_type: str = "COMMITTED"):
+    """
+    Insert rows into BigQuery using the Storage Write API.
+    Args:
+        project_id (str): GCP Project ID
+        dataset (str): BigQuery Dataset
+        table (str): BigQuery Table
+        rows (list[dict]): List of rows to insert
+        stream_type (str): "COMMITTED" (streaming) or "PENDING" (batch)
+    """
+
+    client = bigquery_storage_v1.BigQueryWriteClient()
+    table_path = client.table_path(project_id, dataset, table)
+
+    # Create a write stream
+    write_stream = types.WriteStream(type_=getattr(types.WriteStream.Type, stream_type))
+    stream = client.create_write_stream(parent=table_path, write_stream=write_stream)
+
+    # Build the AppendRowsRequest
+    proto_schema = client.get_write_stream(name=stream.name).table_schema
+    request_template = types.AppendRowsRequest(
+        write_stream=stream.name,
+        proto_rows=types.AppendRowsRequest.ProtoData(
+            writer_schema=types.ProtoSchema(proto_descriptor=proto_schema.proto_descriptor)
+        ),
+    )
+
+    # Fill in rows
+    proto_rows = types.ProtoRows()
+    for row in rows:
+        # Add deduplication ID
+        row["_insert_id"] = str(uuid.uuid4())
+        proto_row = ParseDict(row, types.ProtoRows().rows.add())  # convert dict -> proto
+        proto_rows.rows.append(proto_row)
+
+    # Send request
+    request = types.AppendRowsRequest(
+        write_stream=stream.name,
+        proto_rows=types.AppendRowsRequest.ProtoData(rows=proto_rows),
+    )
+    response = client.append_rows(iter([request]))
+
+    # Finalize batch streams
+    if stream_type == "PENDING":
+        client.finalize_write_stream(name=stream.name)
+
+    return f"✅ Inserted {len(rows)} rows into {dataset}.{table} with {stream_type} stream."
+
+
+# -------------------
+# Example usage
+# -------------------
+if __name__ == "__main__":
+    PROJECT = "your_project"
+    DATASET = "your_dataset"
+    TABLE = "your_table"
+
+    test_rows = [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"},
+    ]
+
+    print(insert_rows(PROJECT, DATASET, TABLE, test_rows, stream_type="COMMITTED"))
+
+
+
+
+
+#######
 from google.cloud import bigquery_storage_v1
 from google.cloud.bigquery_storage_v1 import types
 import uuid
