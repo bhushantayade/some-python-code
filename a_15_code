@@ -1,3 +1,53 @@
+import re
+
+def reverse_date_path_v4(path: str) -> str:
+    """
+    Robust reverse function that:
+     - detects YYYYMMDD, YYYYMM, YYYY (with plausible years 1900-2099)
+     - detects yyyy/mm/dd and yy/mm/dd forms
+     - recognizes month= / day= / year= context
+     - avoids replacing digits embedded in alphabetic words (e.g. COMMUNICATION)
+     - avoids wrongly replacing 2-digit groups inside longer numeric sequences
+    """
+    p = path
+
+    # 1) contiguous numeric formats (longest-first); require plausible year (19|20) where appropriate
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{6})(?![A-Za-z])', 'YYYYMMDD', p)
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{4})(?![A-Za-z])', 'YYYYMM', p)
+
+    # 2) yyyy/mm/dd or yyyy-mm-dd or yyyy_mm_dd  -> YYYY/MM/DD
+    p = re.sub(
+        r'(?<![A-Za-z])((?:19|20)\d{2})[\/\-_](0[1-9]|1[0-2])[\/\-_](0[1-9]|[12]\d|3[01])(?![A-Za-z])',
+        'YYYY/MM/DD',
+        p
+    )
+    # 3) yy/mm/dd -> YY/MM/DD
+    p = re.sub(
+        r'(?<![A-Za-z])(\d{2})[\/\-_](0[1-9]|1[0-2])[\/\-_](0[1-9]|[12]\d|3[01])(?![A-Za-z])',
+        'YY/MM/DD',
+        p
+    )
+
+    # 4) context-aware key=value replacements (case-insensitive)
+    p = re.sub(r'(?i)(month=)(0[1-9]|1[0-2])', r'\1MM', p)
+    p = re.sub(r'(?i)(day=)(0[1-9]|[12]\d|3[01])', r'\1DD', p)
+    p = re.sub(r'(?i)(year=)(19|20)\d{2}', r'\1YYYY', p)
+
+    # 5) standalone 4-digit year (1900-2099) -> YYYY (avoid inside words)
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{2})(?![A-Za-z])', 'YYYY', p)
+
+    # 6) standalone MM and DD (01-12, 01-31) - avoid adjacent letters/digits
+    p = re.sub(r'(?<![A-Za-z0-9])(0[1-9]|1[0-2])(?![A-Za-z0-9])', 'MM', p)
+    p = re.sub(r'(?<![A-Za-z0-9])(0[1-9]|[12]\d|3[01])(?![A-Za-z0-9])', 'DD', p)
+
+    # 7) final fallback: standalone 2-digit groups -> YY (strict boundaries: not adjacent to letters/digits)
+    p = re.sub(r'(?<![A-Za-z0-9])(\d{2})(?![A-Za-z0-9])', 'YY', p)
+
+    return p
+
+
+
+#####
 #new smarter way
 import re
 
