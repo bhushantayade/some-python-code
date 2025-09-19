@@ -1,3 +1,38 @@
+#new smarter way
+import re
+
+def reverse_date_path(resolved_path):
+    """
+    Reverse date placeholders (YYYY, YY, MM, DD, YYYYMM, YYYYMMDD)
+    with context-aware detection.
+    """
+    path = resolved_path
+
+    # Step 1: Longest → shortest direct matches
+    replacements = [
+        (r'(?<!\d)(\d{8})(?!\d)', 'YYYYMMDD'),  # e.g. 20231115
+        (r'(?<!\d)(\d{6})(?!\d)', 'YYYYMM'),    # e.g. 202311
+        (r'(?<!\d)(\d{4})(?!\d)', 'YYYY'),      # e.g. 2023
+    ]
+    for pattern, placeholder in replacements:
+        path = re.sub(pattern, placeholder, path)
+
+    # Step 2: Context-aware replacements
+    path = re.sub(r'(?i)(month=)(\d{2})', r'\1MM', path)  # month=11 → month=MM
+    path = re.sub(r'(?i)(day=)(\d{2})', r'\1DD', path)    # day=15 → day=DD
+    path = re.sub(r'(?i)(year=)(\d{4})', r'\1YYYY', path) # year=2023 → year=YYYY
+
+    # Step 3: Delimiter-based patterns (e.g. 23/11/15)
+    path = re.sub(r'(?<!\d)(\d{2})[/-](\d{2})[/-](\d{2})(?!\d)',
+                  r'YY/MM/DD', path)
+
+    # Step 4: Remaining standalone 2-digits (fallback to YY)
+    path = re.sub(r'(?<!\d)(\d{2})(?!\d)', 'YY', path)
+
+    return path
+
+
+####
 import re
 
 def reverse_resolve_date_path(file_path: str) -> str:
