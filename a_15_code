@@ -1,4 +1,84 @@
 import re
+from typing import Tuple, Dict
+
+def reverse_date_path_v4(path: str) -> Tuple[str, Dict[str, str]]:
+    """
+    Robust reverse function that:
+     - detects YYYYMMDD, YYYYMM, YYYY (with plausible years 1900-2099)
+     - detects yyyy/mm/dd and yy/mm/dd forms
+     - recognizes month= / day= / year= context
+     - avoids replacing digits embedded in alphabetic words (e.g. COMMUNICATION)
+     - avoids wrongly replacing 2-digit groups inside longer numeric sequences
+
+    Returns:
+        (reversed_path, mapping_dict)
+        where mapping_dict = {actual_value: placeholder}
+    """
+    p = path
+    mapping = {}
+
+    # 1) contiguous numeric formats (longest-first)
+    def repl(match, token):
+        val = match.group(1)
+        mapping[val] = token
+        return token
+
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{6})(?![A-Za-z])', lambda m: repl(m, 'YYYYMMDD'), p)
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{4})(?![A-Za-z])', lambda m: repl(m, 'YYYYMM'), p)
+
+    # 2) yyyy/mm/dd or yyyy-mm-dd or yyyy_mm_dd -> YYYY/MM/DD
+    p = re.sub(
+        r'(?<![A-Za-z])((?:19|20)\d{2})[\/\-_](0[1-9]|1[0-2])[\/\-_](0[1-9]|[12]\d|3[01])(?![A-Za-z])',
+        lambda m: _map_seq(m, ['YYYY','MM','DD'], mapping),
+        p
+    )
+
+    # 3) yy/mm/dd -> YY/MM/DD
+    p = re.sub(
+        r'(?<![A-Za-z])(\d{2})[\/\-_](0[1-9]|1[0-2])[\/\-_](0[1-9]|[12]\d|3[01])(?![A-Za-z])',
+        lambda m: _map_seq(m, ['YY','MM','DD'], mapping),
+        p
+    )
+
+    # 4) context-aware key=value replacements
+    p = re.sub(r'(?i)(month=)(0[1-9]|1[0-2])',
+               lambda m: f"{m.group(1)}{_map_val(m.group(2),'MM',mapping)}", p)
+    p = re.sub(r'(?i)(day=)(0[1-9]|[12]\d|3[01])',
+               lambda m: f"{m.group(1)}{_map_val(m.group(2),'DD',mapping)}", p)
+    p = re.sub(r'(?i)(year=)((?:19|20)\d{2})',
+               lambda m: f"{m.group(1)}{_map_val(m.group(2),'YYYY',mapping)}", p)
+
+    # 5) standalone 4-digit year
+    p = re.sub(r'(?<![A-Za-z])((?:19|20)\d{2})(?![A-Za-z])',
+               lambda m: _map_val(m.group(1),'YYYY',mapping), p)
+
+    # 6) standalone MM and DD
+    p = re.sub(r'(?<![A-Za-z0-9])(0[1-9]|1[0-2])(?![A-Za-z0-9])',
+               lambda m: _map_val(m.group(1),'MM',mapping), p)
+    p = re.sub(r'(?<![A-Za-z0-9])(0[1-9]|[12]\d|3[01])(?![A-Za-z0-9])',
+               lambda m: _map_val(m.group(1),'DD',mapping), p)
+
+    # 7) final fallback: standalone 2-digit groups -> YY
+    p = re.sub(r'(?<![A-Za-z0-9])(\d{2})(?![A-Za-z0-9])',
+               lambda m: _map_val(m.group(1),'YY',mapping), p)
+
+    return p, mapping
+
+
+# helper functions
+def _map_val(val: str, token: str, mapping: dict) -> str:
+    mapping[val] = token
+    return token
+
+def _map_seq(match, tokens, mapping: dict) -> str:
+    groups = match.groups()
+    for val, token in zip(groups, tokens):
+        mapping[val] = token
+    return "/".join(tokens)
+
+
+####
+import re
 
 def reverse_date_path_v4(path: str) -> str:
     """
