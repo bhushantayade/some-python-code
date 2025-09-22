@@ -1,3 +1,49 @@
+WITH base AS (
+  SELECT
+    bucket_name,
+    file_name,
+    create_ts,
+    -- Normalize path like reverse_date_path_v4
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        REGEXP_REPLACE(
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(file_name, r'((19|20)\d{8})', 'YYYYMMDD'),
+            r'((19|20)\d{6})', 'YYYYMM'
+          ),
+          r'((19|20)\d{4})', 'YYYY'
+        ),
+        r'([/_-])(0[1-9]|1[0-2])([/_-])(0[1-9]|[12]\d|3[01])',
+        r'\1MM\3DD'
+      ),
+      r'([/_-])(\d{2})([/_-])(0[1-9]|1[0-2])([/_-])(0[1-9]|[12]\d|3[01])',
+      r'\1YY\3MM\5DD'
+    ) AS normalized_path
+  FROM parsed
+  WHERE file_name IS NOT NULL
+),
+dedup AS (
+  SELECT
+    bucket_name,
+    normalized_path,
+    DATE(create_ts) AS create_date,
+    ROW_NUMBER() OVER (
+      PARTITION BY bucket_name, normalized_path
+      ORDER BY create_ts
+    ) AS rn
+  FROM base
+)
+SELECT
+  bucket_name,
+  create_date,
+  COUNT(1) AS unique_file_count_first_seen
+FROM dedup
+WHERE rn = 1
+GROUP BY bucket_name, create_date
+ORDER BY bucket_name, create_date;
+
+
+###
 import re
 from typing import Tuple, Dict
 
