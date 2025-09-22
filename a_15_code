@@ -1,3 +1,94 @@
+-- Comprehensive test query with normalization steps visible
+WITH pattern_normalized_parent AS (
+  SELECT
+    bucket_name,
+    original_path,
+    REGEXP_REPLACE(original_path, r'(19|20)\d{6}', 'YYYYMMDD') as normalized_1,
+    REGEXP_REPLACE(original_path, r'(19|20)\d{4}', 'YYYYMM') as normalized_2,
+    REGEXP_REPLACE(original_path, r'(19|20)\d{2}', 'YYYY') as normalized_3,
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        REGEXP_REPLACE(original_path, r'(19|20)\d{2}[/\-_](0[1-9]|1[0-2])[/\-_](0[1-9]|[12]\d|3[01])', 'YYYY/MM/DD'),
+        r'\d{2}[/\-_](0[1-9]|1[0-2])[/\-_](0[1-9]|[12]\d|3[01])', 'YY/MM/DD'
+      ),
+      r'(?i)(year=)((19|20)\d{2})[/\-_](month=)(0[1-9]|1[0-2])[/\-_](day=)(0[1-9]|[12]\d|3[01])', 'year=YYYY/month=MM/day=DD'
+    ) as normalized_pattern
+  FROM parent
+),
+
+pattern_normalized_resolved AS (
+  SELECT
+    bucket_name,
+    resolved_path,
+    REGEXP_REPLACE(resolved_path, r'(19|20)\d{6}', 'YYYYMMDD') as normalized_1,
+    REGEXP_REPLACE(resolved_path, r'(19|20)\d{4}', 'YYYYMM') as normalized_2,
+    REGEXP_REPLACE(resolved_path, r'(19|20)\d{2}', 'YYYY') as normalized_3,
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        REGEXP_REPLACE(resolved_path, r'(19|20)\d{2}[/\-_](0[1-9]|1[0-2])[/\-_](0[1-9]|[12]\d|3[01])', 'YYYY/MM/DD'),
+        r'\d{2}[/\-_](0[1-9]|1[0-2])[/\-_](0[1-9]|[12]\d|3[01])', 'YY/MM/DD'
+      ),
+      r'(?i)(year=)((19|20)\d{2})[/\-_](month=)(0[1-9]|1[0-2])[/\-_](day=)(0[1-9]|[12]\d|3[01])', 'year=YYYY/month=MM/day=DD'
+    ) as normalized_pattern
+  FROM resolved
+),
+
+final_normalized_parent AS (
+  SELECT
+    bucket_name,
+    original_path,
+    CASE
+      WHEN normalized_pattern LIKE '%YYYY/MM/DD%' OR normalized_pattern LIKE '%YY/MM/DD%' OR 
+           normalized_pattern LIKE '%year=YYYY/month=MM/day=DD%' THEN normalized_pattern
+      WHEN normalized_1 != original_path THEN normalized_1
+      WHEN normalized_2 != original_path THEN normalized_2
+      WHEN normalized_3 != original_path THEN normalized_3
+      ELSE original_path
+    END as final_normalized,
+    normalized_1,
+    normalized_2, 
+    normalized_3,
+    normalized_pattern
+  FROM pattern_normalized_parent
+),
+
+final_normalized_resolved AS (
+  SELECT
+    bucket_name,
+    resolved_path,
+    CASE
+      WHEN normalized_pattern LIKE '%YYYY/MM/DD%' OR normalized_pattern LIKE '%YY/MM/DD%' OR
+           normalized_pattern LIKE '%year=YYYY/month=MM/day=DD%' THEN normalized_pattern
+      WHEN normalized_1 != resolved_path THEN normalized_1
+      WHEN normalized_2 != resolved_path THEN normalized_2
+      WHEN normalized_3 != resolved_path THEN normalized_3
+      ELSE resolved_path
+    END as final_normalized,
+    normalized_1,
+    normalized_2,
+    normalized_3,
+    normalized_pattern
+  FROM pattern_normalized_resolved
+)
+
+SELECT
+  p.bucket_name,
+  p.original_path,
+  r.resolved_path,
+  p.final_normalized as parent_normalized,
+  r.final_normalized as resolved_normalized,
+  CASE WHEN p.final_normalized = r.final_normalized THEN 'MATCH' ELSE 'NO MATCH' END as match_status,
+  p.normalized_1 as p_norm1,
+  p.normalized_pattern as p_pattern
+FROM final_normalized_parent p
+FULL OUTER JOIN final_normalized_resolved r
+  ON p.bucket_name = r.bucket_name
+ AND p.final_normalized = r.final_normalized
+ORDER BY match_status, p.original_path, r.resolved_path;
+
+
+
+#######
 WITH base AS (
   SELECT
     bucket_name,
