@@ -1,3 +1,31 @@
+-- 1) if batchdate is a DATE or STRING; if it's TIMESTAMP you can cast it to DATE first
+DECLARE batchdates ARRAY<STRING>;
+DECLARE pivot_list STRING;
+DECLARE dynamic_sql STRING;
+
+-- collect distinct batchdates as strings, ordered (optional)
+SET batchdates = (
+  SELECT ARRAY_AGG(DISTINCT CAST(batchdate AS STRING) ORDER BY CAST(batchdate AS STRING))
+  FROM `your_project.your_dataset.your_table`
+);
+
+-- build the quoted, comma-separated list:  '2025-01-01','2025-01-02',...
+SET pivot_list = (
+  SELECT STRING_AGG(CONCAT("'", b, "'"), ',')
+  FROM UNNEST(batchdates) AS b
+);
+
+-- build final dynamic SQL
+SET dynamic_sql = CONCAT(
+  'SELECT * FROM `your_project.your_dataset.your_table` ',
+  'PIVOT ( SUM(file_receive_count) FOR batchdate IN (', pivot_list, ') )'
+);
+
+-- run it
+EXECUTE IMMEDIATE dynamic_sql;
+
+
+
 DECLARE batchdates ARRAY<STRING>;
 
 SET batchdates = (
