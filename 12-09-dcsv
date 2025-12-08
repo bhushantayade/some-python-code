@@ -1,3 +1,24 @@
+DECLARE batchdates ARRAY<STRING>;
+
+SET batchdates = (
+  SELECT ARRAY_AGG(DISTINCT batchdate)
+  FROM your_table
+);
+
+EXECUTE IMMEDIATE (
+  'SELECT * FROM your_table
+   PIVOT (
+     SUM(file_receive_count)
+     FOR batchdate IN (' || 
+     (SELECT STRING_AGG(CONCAT("'", batchdate, "'")) FROM UNNEST(batchdates)) || 
+     ')
+   )'
+);
+
+
+
+
+########
 import time
 from google.cloud import storage
 import hashlib
