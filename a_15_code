@@ -1,3 +1,111 @@
+-- WARNING: this is a crude DST-ignorant fix. Use only if you are certain create_ts was stored as EST wall time but saved as UTC.
+WITH last_month AS (
+  SELECT
+    bucket_name,
+    file_path,
+    create_ts,
+    -- shift stored value back 5 hours (example)
+    TIMESTAMP_SUB(create_ts, INTERVAL 5 HOUR) AS create_ts_treated_as_est_utc,
+    DATE(DATETIME(TIMESTAMP_SUB(create_ts, INTERVAL 5 HOUR), "America/New_York")) AS dt_est,
+    EXTRACT(HOUR FROM DATETIME(TIMESTAMP_SUB(create_ts, INTERVAL 5 HOUR), "America/New_York")) AS hr_est,
+    EXTRACT(DAYOFWEEK FROM DATE(DATETIME(TIMESTAMP_SUB(create_ts, INTERVAL 5 HOUR), "America/New_York"))) AS dow_est
+  FROM your_table
+  WHERE DATE(DATETIME(TIMESTAMP_SUB(create_ts, INTERVAL 5 HOUR), "America/New_York")) >= DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 30 DAY)
+)
+-- ... continue same as above but use create_ts_treated_as_est_utc where needed ...
+
+
+-- Use this when create_ts is a proper TIMESTAMP in UTC (typical)
+WITH last_month AS (
+  SELECT
+    bucket_name,
+    file_path,
+    create_ts,
+    -- date/hour/day-of-week in EST
+    DATE(DATETIME(create_ts, "America/New_York")) AS dt_est,
+    EXTRACT(HOUR FROM DATETIME(create_ts, "America/New_York")) AS hr_est,
+    EXTRACT(DAYOFWEEK FROM DATE(DATETIME(create_ts, "America/New_York"))) AS dow_est
+  FROM your_table
+  WHERE DATE(DATETIME(create_ts, "America/New_York")) >= DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 30 DAY)
+),
+
+folder_trend AS (
+  SELECT
+    bucket_name,
+    file_path,
+    COUNT(DISTINCT dt_est) AS active_days,
+    COUNT(*) AS total_files,
+    COUNT(DISTINCT dow_est) AS distinct_weekdays,
+    AVG(hr_est) AS avg_hour_of_day,             -- float, e.g. 15.6
+    CASE
+      WHEN COUNT(DISTINCT dt_est) >= 25 THEN 'DAILY'
+      WHEN COUNT(DISTINCT dow_est) <= 2 AND COUNT(DISTINCT dt_est) > 0 THEN 'WEEKLY'
+      ELSE 'IRREGULAR'
+    END AS trend_type
+  FROM last_month
+  GROUP BY bucket_name, file_path
+),
+
+last_arrival AS (
+  SELECT
+    bucket_name,
+    file_path,
+    MAX(create_ts) AS last_arrival_ts_utc,
+    DATE(DATETIME(MAX(create_ts), "America/New_York")) AS last_arrival_date_est
+  FROM last_month
+  GROUP BY bucket_name, file_path
+),
+
+today_arrival AS (
+  SELECT
+    bucket_name,
+    file_path,
+    COUNT(*) AS files_today
+  FROM your_table
+  WHERE DATE(DATETIME(create_ts, "America/New_York")) = CURRENT_DATE("America/New_York")
+  GROUP BY bucket_name, file_path
+)
+
+SELECT
+  f.bucket_name,
+  f.file_path,
+  f.trend_type,
+  ROUND(f.avg_hour_of_day,2) AS expected_hour_est,
+  l.last_arrival_ts_utc,
+  l.last_arrival_date_est,
+  COALESCE(t.files_today, 0) AS files_today,
+  -- build expected timestamp (today at floor(avg_hour))
+  -- compare CURRENT_TIMESTAMP() (UTC) with that EST expected timestamp converted to UTC
+  CASE
+    WHEN f.trend_type = 'DAILY'
+         AND COALESCE(t.files_today, 0) = 0
+         -- expected timestamp today in EST -> convert to UTC then compare with CURRENT_TIMESTAMP()
+         AND CURRENT_TIMESTAMP() > TIMESTAMP(
+                DATETIME(CURRENT_DATE("America/New_York"), 
+                         TIME(CAST(FLOOR(f.avg_hour_of_day) AS INT64), 0, 0)
+                ),
+                "America/New_York"
+             )
+    THEN 'MISSING (Expected Daily File)'
+    
+    WHEN f.trend_type = 'WEEKLY'
+         AND (l.last_arrival_date_est IS NULL OR l.last_arrival_date_est < DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 7 DAY))
+    THEN 'MISSING (Expected Weekly File)'
+    
+    ELSE 'OK'
+  END AS status
+FROM folder_trend f
+LEFT JOIN last_arrival l USING (bucket_name, file_path)
+LEFT JOIN today_arrival t USING (bucket_name, file_path)
+ORDER BY status DESC, bucket_name, file_path;
+
+
+
+
+
+
+
+
 -- Comprehensive test query with normalization steps visible
 WITH pattern_normalized_parent AS (
   SELECT
