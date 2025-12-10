@@ -1,3 +1,126 @@
+-- Reverified & improved version
+WITH last_month AS (
+  SELECT
+    bucket_name,
+    file_path,
+    create_ts,
+    -- EST-aware values (reuse these columns everywhere)
+    DATETIME(create_ts, "America/New_York")                           AS dt_est,
+    DATE(DATETIME(create_ts, "America/New_York"))                     AS date_est,
+    EXTRACT(HOUR FROM DATETIME(create_ts, "America/New_York"))        AS hr_est,
+    EXTRACT(MINUTE FROM DATETIME(create_ts, "America/New_York"))      AS min_est,
+    EXTRACT(SECOND FROM DATETIME(create_ts, "America/New_York"))      AS sec_est,
+    EXTRACT(DAYOFWEEK FROM DATETIME(create_ts, "America/New_York"))   AS dow_est
+  FROM your_table
+  WHERE DATE(DATETIME(create_ts, "America/New_York")) >= DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 30 DAY)
+),
+
+-- derive per-folder trend & average time (in fractional hours)
+folder_trend AS (
+  SELECT
+    bucket_name,
+    file_path,
+    COUNT(DISTINCT date_est) AS active_days,
+    COUNT(*)               AS total_files,
+    COUNT(DISTINCT dow_est) AS distinct_weekdays,
+    -- compute avg as fractional hours (hr + min/60 + sec/3600)
+    AVG(CAST(hr_est AS FLOAT64) + CAST(min_est AS FLOAT64)/60.0 + CAST(sec_est AS FLOAT64)/3600.0) AS avg_hour_of_day
+  FROM last_month
+  GROUP BY bucket_name, file_path
+),
+
+-- classify trend: DAILY > WEEKLY > MONTHLY > IRREGULAR
+folder_trend_classified AS (
+  SELECT
+    ft.*,
+    CASE
+      WHEN active_days >= 25 THEN 'DAILY'
+      WHEN distinct_weekdays <= 2 AND active_days >= 3 THEN 'WEEKLY'   -- repeated weekly pattern
+      WHEN active_days <= 2 THEN 'MONTHLY'                            -- 1-2 days in 30 days => monthly-like
+      ELSE 'IRREGULAR'
+    END AS trend_type
+  FROM folder_trend ft
+),
+
+last_arrival AS (
+  SELECT
+    bucket_name,
+    file_path,
+    MAX(create_ts) AS last_arrival_ts_utc,
+    DATE(DATETIME(MAX(create_ts), "America/New_York")) AS last_arrival_date_est
+  FROM last_month
+  GROUP BY bucket_name, file_path
+),
+
+-- compute today's arrivals by reusing last_month (faster than re-evaluating timezone on full table)
+today_arrival AS (
+  SELECT
+    bucket_name,
+    file_path,
+    COUNT(*) AS files_today
+  FROM last_month
+  WHERE date_est = CURRENT_DATE("America/New_York")
+  GROUP BY bucket_name, file_path
+)
+
+SELECT
+  c.bucket_name,
+  c.file_path,
+  c.trend_type,
+  ROUND(c.avg_hour_of_day, 3) AS expected_hour_est_fraction,
+  -- also show as HH:MM for readability:
+  LPAD(CAST(CAST(FLOOR(c.avg_hour_of_day) AS INT64) AS STRING), 2, '0') ||
+    ':' ||
+    LPAD(CAST(CAST(ROUND((c.avg_hour_of_day - FLOOR(c.avg_hour_of_day))*60) AS INT64) AS STRING), 2, '0')
+    AS expected_time_est_hhmm,
+  l.last_arrival_ts_utc,
+  l.last_arrival_date_est,
+  COALESCE(t.files_today, 0) AS files_today,
+
+  -- build an expected timestamp (today) in EST including minutes, convert to UTC for comparison
+  -- use COALESCE to default to 00:00 if avg is NULL (shouldn't happen for folders present in folder_trend)
+  CASE
+    WHEN c.trend_type = 'DAILY'
+         AND COALESCE(t.files_today, 0) = 0
+         AND CURRENT_TIMESTAMP() > TIMESTAMP(
+               /* DATETIME(date, time) */
+               DATETIME(
+                 CURRENT_DATE("America/New_York"),
+                 TIME(
+                   CAST(FLOOR(COALESCE(c.avg_hour_of_day, 0)) AS INT64),
+                   CAST(ROUND((COALESCE(c.avg_hour_of_day,0) - FLOOR(COALESCE(c.avg_hour_of_day,0)))*60) AS INT64),
+                   0
+                 )
+               ),
+               "America/New_York"
+             )
+    THEN 'MISSING (Expected Daily File)'
+
+    WHEN c.trend_type = 'WEEKLY'
+         AND (l.last_arrival_date_est IS NULL
+              OR l.last_arrival_date_est < DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 7 DAY))
+    THEN 'MISSING (Expected Weekly File)'
+
+    WHEN c.trend_type = 'MONTHLY'
+         AND (l.last_arrival_date_est IS NULL
+              OR l.last_arrival_date_est < DATE_SUB(CURRENT_DATE("America/New_York"), INTERVAL 30 DAY))
+    THEN 'MISSING (Expected Monthly File)'
+
+    ELSE 'OK'
+  END AS status
+
+FROM folder_trend_classified c
+LEFT JOIN last_arrival l USING (bucket_name, file_path)
+LEFT JOIN today_arrival t USING (bucket_name, file_path)
+
+ORDER BY status DESC, bucket_name, file_path;
+
+
+
+
+
+
+
 -- WARNING: this is a crude DST-ignorant fix. Use only if you are certain create_ts was stored as EST wall time but saved as UTC.
 WITH last_month AS (
   SELECT
