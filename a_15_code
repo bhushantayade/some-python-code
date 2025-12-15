@@ -1,3 +1,128 @@
+Hello Team,
+
+This is an automated alert to inform you that a file ingestion SLA has been missed.
+
+Folder Details:
+• Bucket Name      : raw_bucket
+• Folder Path      : /daily/orders/
+• Expected Pattern : DAILY
+• Expected Time    : 16:00 (EST)
+• Last File Arrival: 2025-02-20
+
+Status:
+• MISSING (Expected Daily File)
+
+Action Required:
+Please verify the upstream system and ensure the expected file is delivered. 
+If the file has already been delivered, kindly check ingestion or processing delays.
+
+Alert Generated At:
+• 2025-02-21 16:30 (EST)
+
+This is an automated notification. Please do not reply to this email.
+
+Thank you,
+Monitoring Team
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SLA Miss Alert</title>
+</head>
+<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif; background-color:#f4f6f8;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:6px; overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#c62828; padding:16px; color:#ffffff;">
+              <h2 style="margin:0; font-size:20px;">🚨 SLA Miss Alert</h2>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:20px; color:#333333; font-size:14px; line-height:1.6;">
+              <p>Hello Team,</p>
+
+              <p>
+                This is an automated alert to inform you that a
+                <strong>file ingestion SLA has been missed</strong>.
+              </p>
+
+              <!-- Details Table -->
+              <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin:16px 0;">
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Bucket Name</strong></td>
+                  <td style="border:1px solid #dddddd;">{{bucket_name}}</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Folder Path</strong></td>
+                  <td style="border:1px solid #dddddd;">{{file_path}}</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Expected Pattern</strong></td>
+                  <td style="border:1px solid #dddddd;">{{trend_type}}</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Expected Time (EST)</strong></td>
+                  <td style="border:1px solid #dddddd;">{{expected_time_est_hhmm}}</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Last File Arrival</strong></td>
+                  <td style="border:1px solid #dddddd;">{{last_arrival_date_est}}</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #dddddd; background:#f8f9fa;"><strong>Status</strong></td>
+                  <td style="border:1px solid #dddddd; color:#c62828;">
+                    <strong>{{status}}</strong>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Action -->
+              <p>
+                <strong>Action Required:</strong><br>
+                Please verify the upstream system and ensure the expected file is delivered.
+                If the file has already been delivered, check for ingestion or processing delays.
+              </p>
+
+              <p style="margin-top:20px;">
+                <strong>Alert Generated At:</strong><br>
+                {{detected_at}} (EST)
+              </p>
+
+              <p style="margin-top:20px; font-size:12px; color:#777777;">
+                This is an automated notification. Please do not reply to this email.
+              </p>
+
+              <p style="margin-top:20px;">
+                Regards,<br>
+                <strong>Data Platform Monitoring Team</strong>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f0f0f0; padding:12px; text-align:center; font-size:11px; color:#777777;">
+              © {{current_year}} Data Platform | SLA Monitoring System
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+
+
+
 -- Reverified & improved version
 WITH last_month AS (
   SELECT
